@@ -321,7 +321,7 @@ function handleUpdate(row) {
   getWhitelist(id).then(response => {
     form.value = response.data;
     open.value = true;
-    title.value = "修改主机ID白名单";
+    title.value = "修改主机白名单（Engine/OpenClaw）";
   });
 }
 

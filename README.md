@@ -1,7 +1,7 @@
 <h1 align="center" style="margin: 30px 0 30px; font-weight: bold;">福帮手数据智能化系统</h1>
 <h4 align="center">福帮手FBSir，幸福有AI，幸运有你。Fbsir, AI 4 Happiness, U 4 Fortune。</h4>
 <p align="center">
-	<a href="https://gitee.com/U3W-AI/RuoYi-Vue"><img src="https://img.shields.io/badge/WxFbsir-v1.3.2-brightgreen.svg"></a>
+	<a href="https://gitee.com/U3W-AI/RuoYi-Vue"><img src="https://img.shields.io/badge/WxFbsir-v1.0.0--core-brightgreen.svg"></a>
 	<a href="https://www.fbsir.com"><img src="https://img.shields.io/badge/website-www.fbsir.com-blue.svg"></a>
     <a href="https://gitee.com/U3W-AI/WxFbsir/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg"></a>
     <a href="https://spring.io/projects/spring-boot"><img src="https://img.shields.io/badge/Spring%20Boot-3.x-green.svg"></a>
@@ -71,6 +71,11 @@
 ### 引擎端 (Engine)
 - **自动化**：Playwright
 - **通信**：WebSocket
+
+### 🔖 版本口径说明（按代码对齐）
+- **主干工程版本**：`1.0.0`（以根目录 `pom.xml` 与 `WxFbsir-ui/package.json` 为准）
+- **Engine 节点版本**：`1.3.1`（以 `WxFbsir-engine/pom.xml` 的 `engine.version` 为准）
+- **文档中的 JAR 名称**：统一使用 `wxfbsir-engine-[engine.version].jar` 占位，不再硬编码历史版本号
 
 ---
 
@@ -188,10 +193,11 @@ npm run dev      # 启动开发服务器
 - **[文档规范总结](./docs/开发规范/文档规范总结.md)** - 文档编写规范汇总
 - **[权限控制规范](./docs/开发规范/权限控制规范.md)** - 权限与鉴权规范
 - **[功能说明](./docs/功能说明)** - 功能说明目录
+- **[全局一致性对齐说明](./docs/全局一致性对齐说明.md)** - 代码实现与文档口径统一基线
 
 本项目后台管理系统基于 **若依(RuoYi)** 框架进行二次开发，感谢若依团队提供的优秀开源框架。
 
 
-文档更新日期：2026年3月21日 19：00  文档版本：1.3.2
+文档更新日期：2026年4月12日 18:58  文档版本：1.0.0-core（主干） / 1.3.1（Engine）
 
 <p align="center">Copyright © 2024-2026 WxFbsir. All Rights Reserved.</p>

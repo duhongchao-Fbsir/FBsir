@@ -18,7 +18,7 @@
 
 ## 项目简介
 
-WxFbsir-Engine 是一个基于 **Playwright** 的浏览器自动化任务引擎，通过 **WebSocket** 与业务端（WxFbsir-business）通信，接收任务请求并返回执行结果。
+WxFbsir-Engine 是一个基于 **Playwright** 的浏览器自动化任务引擎，通过 **WebSocket** 与主节点（WxFbsir-admin）通信，接收任务请求并返回执行结果。
 
 ### 核心特性
 
@@ -26,14 +26,14 @@ WxFbsir-Engine 是一个基于 **Playwright** 的浏览器自动化任务引擎�
 - ✅ **会话管理** - 持久化会话、状态保存、资源池管理
 - ✅ **流式输出** - 支持进度推送、日志推送、截图推送
 - ✅ **单次输出** - 支持快速返回的简单任务
-- ✅ **截图上传** - 自动截图并上传到业务端
+- ✅ **截图上传** - 自动截图并上传到主节点
 - ✅ **异常处理** - 完整的错误处理和资源清理机制
 
 ### 技术栈
 
 - **Spring Boot** - 应用框架
 - **Playwright** - 浏览器自动化
-- **WebSocket** - 与业务端通信
+- **WebSocket** - 与主节点通信
 - **Jackson** - JSON序列化
 
 ---
@@ -51,36 +51,39 @@ WxFbsir-Engine 是一个基于 **Playwright** 的浏览器自动化任务引擎�
 编辑 `application.yml`：
 
 ```yaml
-# WebSocket连接配置
-websocket:
-  admin:
-    url: ws://localhost:8080/ws/engine  # 业务端WebSocket地址
-    engineId: engine-001                # Engine唯一标识
+wxfbsir:
+  engine:
+    # 主节点 WebSocket 地址
+    ws-url: ws://localhost:8080/ws/engine
+    # 主机ID（需在 Admin 白名单中）
+    host-id: engine-001
+
     reconnect:
       enabled: true
-      maxAttempts: 10
-      initialDelay: 1000
+      max-retries: 10
+      initial-delay: 30
+      max-delay: 30
+      backoff-multiplier: 1.0
 
-# Playwright配置
-playwright:
-  browser:
-    type: chromium                      # 浏览器类型
-    headless: true                      # 无头模式
-  pool:
-    maxSize: 5                          # 浏览器池最大数量
+    playwright:
+      enabled: true
+      data-dir: ./data/playwright
+      headless: false
+      pool:
+        max-size: 0
 ```
 
 ### 3. 启动Engine
 
 ```bash
 # 编译
-mvn clean package
+mvn clean package -DskipTests
 
-# 运行
-java -jar target/WxFbsir-engine.jar
+# 运行（实际文件名由 pom.xml 的 engine.version 决定）
+java -jar target/wxfbsir-engine-[engine.version].jar
 ```
 
-启动成功后，Engine会自动连接到业务端WebSocket服务。
+启动成功后，Engine会自动连接到主节点 WebSocket 服务。
 
 ---
 
@@ -265,12 +268,12 @@ public class MyNewController extends StreamTaskHelper {
 
 ### 核心文档
 
-1. **[Playwright框架完整指南](../docs/Playwright框架完整指南.md)**
+1. **[Playwright框架完整指南](../docs/功能说明/engine/Playwright框架完整指南.md)**
    - 浏览器自动化开发指南
    - 会话管理、资源池、截图上传
    - 最佳实践和常见问题
 
-2. **[WebSocket通信完整指南](../docs/WebSocket通信完整指南.md)**
+2. **[WebSocket通信完整指南](../docs/功能说明/engine/WebSocket通信完整指南.md)**
    - WebSocket消息协议
    - 流式输出与单次输出对比
    - 消息类型说明和示例代码
@@ -318,24 +321,24 @@ WxFbsir-engine/
 │   │   ├── client/              # WebSocket客户端
 │   │   ├── message/             # 消息定义
 │   │   └── util/                # 工具类
-│   └── EngineApplication.java   # 启动类
+│   └── WxFbsirEngineApplication.java   # 启动类
 ├── src/main/resources/
-│   ├── application.yml          # 配置文件
-│   └── logback-spring.xml       # 日志配置
-├── docs/                        # 文档目录（项目根目录）
+│   ├── application.yml                 # 配置文件
+│   └── logback-spring.xml              # 日志配置
+├── ../docs/功能说明/engine/            # 关键引擎文档（项目根目录）
 │   ├── Playwright框架完整指南.md
 │   └── WebSocket通信完整指南.md
-└── README.md                    # 本文档
+└── README.md                           # 本文档
 ```
 
 ---
 
 ## 常见问题
 
-### Q1: Engine无法连接到业务端？
+### Q1: Engine无法连接到主节点？
 
 **检查清单**:
-- ✅ 业务端是否已启动？
+- ✅ 主节点（Admin）是否已启动？
 - ✅ WebSocket地址是否正确？（默认 `ws://localhost:8080/ws/engine`）
 - ✅ Engine ID是否在白名单中？
 - ✅ 防火墙是否阻止了连接？

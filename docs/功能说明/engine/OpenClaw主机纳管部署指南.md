@@ -85,7 +85,7 @@ java -jar WxFbsir-admin/target/WxFbsir-admin.jar
 
 ```bash
 # 运行Engine服务（如果需要）
-java -jar WxFbsir-engine/target/WxFbsir-engine.jar
+java -jar WxFbsir-engine/target/wxfbsir-engine-[engine.version].jar
 ```
 
 ### 2. 前端部署

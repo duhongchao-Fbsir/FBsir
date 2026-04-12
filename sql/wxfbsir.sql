@@ -226,7 +226,7 @@ insert into sys_menu values('120',  '积分总览', '6',   '1', 'points-overview
 insert into sys_menu values('121',  '积分规则配置', '6', '2', 'points-rule', 'system/points/rule/index', '', '', 1, 0, 'C', '0', '0', 'points:rule:list', 'edit', 'admin', sysdate(), '', null, '积分规则配置菜单');
 insert into sys_menu values('122',  '粉丝管理', '6', '3', 'points-fans', 'business/points/fans/index', '', '', 1, 0, 'C', '0', '0', 'points:fans:list', 'user', 'admin', sysdate(), '', null, '粉丝管理菜单');
 -- 主机管理子菜单（parent_id=7）
-insert into sys_menu values('123',  '主机ID白名单', '7', '1', 'whitelist', 'business/host/whitelist/index', '', '', 1, 0, 'C', '0', '0', 'business:host:whitelist:view', 'list', 'admin', sysdate(), '', null, '主机ID白名单管理菜单');
+insert into sys_menu values('123',  '主机白名单（含OpenClaw）', '7', '1', 'whitelist', 'business/host/whitelist/index', '', '', 1, 0, 'C', '0', '0', 'business:host:whitelist:view', 'list', 'admin', sysdate(), '', null, 'Engine/OpenClaw主机白名单管理菜单');
 insert into sys_menu values('124',  'IP黑名单', '7', '2', 'blacklist', 'business/host/blacklist/index', '', '', 1, 0, 'C', '0', '0', 'business:host:blacklist:view', 'lock', 'admin', sysdate(), '', null, 'IP黑名单管理菜单');
 insert into sys_menu values('125',  '连接记录与在线', '7', '3', 'connection', 'business/host/connection/index', '', '', 1, 0, 'C', '0', '0', 'business:host:connection:view', 'monitor', 'admin', sysdate(), '', null, '主机连接记录与在线列表管理菜单');
 insert into sys_menu values('126',  'WebSocket调试', '7', '4', 'debug', 'business/debug/index', '', '', 1, 0, 'C', '0', '0', 'business:debug:view', 'bug', 'admin', sysdate(), '', null, 'WebSocket调试工具，用于开发测试');

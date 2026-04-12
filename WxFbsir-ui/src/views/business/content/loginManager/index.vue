@@ -332,6 +332,18 @@ const handleWebSocketMessage = (message) => {
     }
   }
 
+  // 兼容独立错误消息格式
+  if (messageType === 'TASK_ERROR' || messageType === 'AI_TASK_ERROR') {
+    const errorMsg = payload?.errorMessage || payload?.message || '未知错误'
+    loginLoading.value = false
+    loginStatusText.value = errorMsg
+    loginDialogVisible.value = false
+    qrCodeUrl.value = ''
+    ElMessage.error(`${currentServiceName.value} 登录失败: ${errorMsg}`)
+    console.log('❌ [登录管理器] 收到独立错误消息:', errorMsg)
+    return
+  }
+
   // 处理扫码登录响应
   // 🔥 兼容多种消息类型：TASK_PROGRESS（进度）、TASK_RESULT（最终结果）、DEEPSEEK_SCAN_LOGIN（直接响应）
   if (messageType === 'TASK_PROGRESS' || messageType === 'TASK_RESULT' || (messageType && messageType.includes('SCAN_LOGIN'))) {
