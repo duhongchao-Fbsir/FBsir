@@ -73,6 +73,7 @@ wxfbsir:
 | `/business/host/whitelist` | POST | `business:host:whitelist:add` | 新增主机 |
 | `/business/host/whitelist` | PUT | `business:host:whitelist:edit` | 修改主机信息 |
 | `/business/host/whitelist/{ids}` | DELETE | `business:host:whitelist:remove` | 删除主机 |
+| `/business/host/whitelist/export` | POST | `business:host:whitelist:export` | 导出主机白名单（Excel） |
 
 ### 前端接口
 

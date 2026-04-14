@@ -37,7 +37,7 @@
 ```mermaid
 flowchart LR
     subgraph admin[Admin]
-        HC[OpenClawHealthChecker 定时 HTTP 探测]
+        HC[OpenClawHealthChecker 定时 HTTP 探测<br/>（OpenClaw/Hermes 纳管）]
         WL[(ws_host_whitelist)]
         HC --> WL
     end

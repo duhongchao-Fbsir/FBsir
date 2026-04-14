@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import com.wx.fbsir.common.utils.poi.ExcelUtil;
 import com.wx.fbsir.common.annotation.Log;
 import com.wx.fbsir.common.core.controller.BaseController;
 import com.wx.fbsir.common.core.domain.AjaxResult;
@@ -27,7 +28,6 @@ import org.springframework.web.client.RestTemplate;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -90,6 +90,16 @@ public class HostWhitelistController extends BaseController
     {
         wsHostWhitelist.setUpdateBy(getUsername());
         return toAjax(wsHostWhitelistMapper.update(wsHostWhitelist));
+    }
+
+    @PreAuthorize("@ss.hasPermi('business:host:whitelist:export')")
+    @Log(title = "主机ID白名单", businessType = BusinessType.EXPORT)
+    @PostMapping("/export")
+    public void export(HttpServletResponse response, WsHostWhitelist wsHostWhitelist)
+    {
+        List<WsHostWhitelist> list = wsHostWhitelistMapper.selectList(wsHostWhitelist);
+        ExcelUtil<WsHostWhitelist> util = new ExcelUtil<>(WsHostWhitelist.class);
+        util.exportExcel(response, list, "主机白名单数据");
     }
 
     @PreAuthorize("@ss.hasPermi('business:host:whitelist:remove')")

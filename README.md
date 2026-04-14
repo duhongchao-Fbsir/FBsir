@@ -105,9 +105,12 @@ WxFbsir
 - **Redis**：>= 5.0
 
 ### 2. 后端启动
-1.  **克隆项目**：
+1.  **克隆项目**（任选其一）：
     ```bash
     git clone https://gitee.com/U3W-AI/U3W-AI.git
+    ```
+    ```bash
+    git clone https://github.com/duhongchao-Fbsir/FBsir.git
     ```
 2.  **导入数据库**：
     创建数据库 `wxfbsir`，并导入 `sql` 目录下的初始化脚本。
@@ -170,9 +173,9 @@ npm run dev      # 启动开发服务器
 文档分析MCP及可用于验证的元器智能体工作流上线，支付丰富格式和快速接入。
 
 
-### ✨ **OpenClaw主机管理功能上线**
+### ✨ **OpenClaw / Hermes 主机纳管**
 
-集中管理多个OpenClaw主机的配置和状态，实时掌握所有主机的运行状态，精细控制主机的访问权限。
+集中管理 OpenClaw、Hermes 等 HTTP 纳管主机的配置与在线状态（健康检查 URL），实时掌握运行状态与访问策略。
 
 
 ### ✨ **特色模块之认证易**
@@ -199,6 +202,6 @@ npm run dev      # 启动开发服务器
 本项目后台管理系统基于 **若依(RuoYi)** 框架进行二次开发，感谢若依团队提供的优秀开源框架。
 
 
-文档更新日期：2026年4月12日 18:58  文档版本：1.0.0-core（主干） / 1.3.1（Engine）
+文档更新日期：2026年4月14日  文档版本：1.0.0-core（主干） / 1.3.1（Engine）
 
 <p align="center">Copyright © 2024-2026 WxFbsir. All Rights Reserved.</p>

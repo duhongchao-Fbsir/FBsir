@@ -1244,6 +1244,14 @@
 - **返回类型**: `AjaxResult`
 - **功能说明**: 删除指定主机
 
+#### 导出主机白名单
+- **请求方式**: `POST`
+- **请求路径**: `/business/host/whitelist/export`
+- **权限要求**: `business:host:whitelist:export`
+- **请求参数**: 与列表查询相同（可选筛选条件），见列表接口
+- **返回类型**: Excel 文件流（`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`）
+- **功能说明**: 导出当前筛选条件下的主机白名单（与前端「导出」按钮一致）
+
 #### 手动健康检查
 - **请求方式**: `GET`
 - **请求路径**: `/business/host/whitelist/health-check/{id}`
