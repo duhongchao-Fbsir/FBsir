@@ -8,6 +8,9 @@
 target/
 !.mvn/wrapper/maven-wrapper.jar
 
+# 本地 Maven 发行包（勿提交）
+tools/apache-maven/
+
 ######################################################################
 # IDE
 
@@ -191,6 +194,9 @@ tmp/
 
 ######################################################################
 # Database & Data Files
+# 本机开发用 MySQL 数据目录（见 tools/start-mysql.ps1）
+.dev/
+
 *.sql.backup
 *.db
 *.sqlite

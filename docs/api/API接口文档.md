@@ -26,7 +26,7 @@
   - [2.8 WebSocket/Engine管理接口](#28-websocketengine管理接口-businesswebsocket)
   - [2.9 企业微信机器人消息接口](#29-企业微信机器人消息接口-businessmessage)  <!-- 新增 -->
   - [2.10 系统提示词管理接口](#210-系统提示词管理接口-businessprompt)
-  - [2.11 OpenClaw主机纳管接口](#211-openclaw主机纳管接口-businesshostwhitelist)
+  - [2.11 主机纳管接口（Engine / OpenClaw / Hermes）](#211-主机纳管接口engine--openclaw--hermes-businesshostwhitelist)
 - [三、监控管理模块](#三监控管理模块)
   - [3.1 缓存监控接口](#31-缓存监控接口-monitorcache)
   - [3.2 服务器监控接口](#32-服务器监控接口-monitorserver)
@@ -1187,7 +1187,7 @@
 - **返回类型**: `TableDataInfo`
 - **功能说明**: 分页查询IP黑名单列表
 
-### 2.11 OpenClaw主机纳管接口 (`/business/host/whitelist`)
+### 2.11 主机纳管接口（Engine / OpenClaw / Hermes） (`/business/host/whitelist`)
 
 #### 获取主机白名单列表
 - **请求方式**: `GET`
@@ -1217,7 +1217,7 @@
 - **请求体**: 
   - `hostId`: String，主机ID
   - `hostName`: String，主机名称
-  - `hostType`: String，主机类型：engine/openclaw
+  - `hostType`: String，主机类型：engine/openclaw/hermes
   - `healthCheckUrl`: String，健康检查URL
   - `status`: Integer，状态：0禁用 1启用
 - **返回类型**: `AjaxResult`
@@ -1251,7 +1251,7 @@
 - **路径参数**: 
   - `id`: Long，主机ID
 - **返回类型**: `AjaxResult`
-- **功能说明**: 手动触发指定OpenClaw主机的健康检查
+- **功能说明**: 手动触发指定主机的 HTTP 健康检查（**仅** `hostType` 为 **openclaw** 或 **hermes** 且已配置 `healthCheckUrl`）
 
 #### 获取所有主机状态
 - **请求方式**: `GET`

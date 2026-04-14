@@ -44,7 +44,8 @@ wxfbsir:
     #   - 一个主机ID同时只能被一个Engine实例使用
     #   - 请勿与他人共享主机ID
     #   - 如果未填写，启动时会提示在终端输入
-    host-id: engine-local-20260412
+    # 须与库表 ws_host_whitelist.host_id 一致（默认种子数据含 engine-dev-001）
+    host-id: engine-dev-001
     
     # 节点版本（用于版本追踪和兼容性检查）
     # 版本号从 pom.xml 的 engine.version 属性自动注入

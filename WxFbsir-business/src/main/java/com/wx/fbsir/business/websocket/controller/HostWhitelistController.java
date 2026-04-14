@@ -41,6 +41,11 @@ import java.util.stream.Collectors;
 @RequestMapping("/business/host/whitelist")
 public class HostWhitelistController extends BaseController
 {
+    /** HTTP 定时健康检查涵盖的类型：openclaw、hermes（与定时任务一致） */
+    private static boolean isHttpManagedHostType(String hostType) {
+        return "openclaw".equals(hostType) || "hermes".equals(hostType);
+    }
+
     @Autowired
     private WsHostWhitelistMapper wsHostWhitelistMapper;
     
@@ -117,8 +122,8 @@ public class HostWhitelistController extends BaseController
                 return error("未找到指定主机");
             }
 
-            if (!"openclaw".equals(host.getHostType())) {
-                return error("只有OpenClaw类型的主机支持健康检查");
+            if (!isHttpManagedHostType(host.getHostType())) {
+                return error("仅 OpenClaw、Hermes 类型且配置了健康检查 URL 的主机支持该操作");
             }
 
             String healthCheckUrl = host.getHealthCheckUrl();

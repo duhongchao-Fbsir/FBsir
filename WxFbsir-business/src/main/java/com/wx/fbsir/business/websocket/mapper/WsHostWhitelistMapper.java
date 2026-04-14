@@ -81,9 +81,9 @@ public interface WsHostWhitelistMapper {
     int updateStatus(@Param("hostId") String hostId, @Param("status") Integer status);
 
     /**
-     * 查询所有启用的OpenClaw主机
+     * 查询所有需 HTTP 健康检查的纳管主机（OpenClaw、Hermes 等）
      *
-     * @return OpenClaw主机列表
+     * @return 主机列表
      */
-    List<WsHostWhitelist> selectOpenclawHosts();
+    List<WsHostWhitelist> selectHostsForHttpHealthCheck();
 }
