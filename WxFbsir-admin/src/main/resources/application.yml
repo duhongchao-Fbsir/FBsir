@@ -85,6 +85,10 @@ spring:
     active: druid
   # 文件上传
   servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
     multipart:
       # 单个文件大小
       max-file-size: 20MB
