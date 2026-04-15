@@ -1,7 +1,8 @@
 # Hermes Agent（NousResearch）安装可行性评估
 
 > **评估日期**：2026-04-14  
-> **对象**：GitHub [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)（PyPI/源码安装，当前浅克隆版本 **v0.9.0**）  
+> **上游同步**：2026-04-14，`main` @ **`4610551`**（`git pull` + `venv` 内 `pip install -e ".[dev]"` 或 `pip install -e "."`）  
+> **对象**：GitHub [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)（PyPI/源码安装，包版本仍为 **v0.9.0**，以 `pyproject.toml` 为准）  
 > **目的**：判断在 **Engine 同机** 部署及后续 **Admin HTTP 健康检查** 集成的可行性与注意事项。
 
 ---
@@ -92,3 +93,20 @@
 - CLI：`D:\u3wv2\.dev\hermes-agent\venv\Scripts\hermes.exe`
 
 （`.dev/` 已在仓库 `.gitignore` 中忽略，避免误提交。）
+
+### 6.1 重新同步上游（维护命令）
+
+在 **`D:\u3wv2\.dev\hermes-agent`** 下执行：
+
+```bash
+git fetch origin && git pull origin main
+.\venv\Scripts\python.exe -m pip install -e "."
+.\venv\Scripts\hermes.exe --version
+```
+
+启用 API Server 做 Admin 健康检查时（默认 **8642**，路径 **`/health`**）：
+
+```powershell
+$env:API_SERVER_ENABLED='true'
+.\venv\Scripts\hermes.exe gateway
+```
