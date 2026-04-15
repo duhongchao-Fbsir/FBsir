@@ -244,5 +244,20 @@ location / {
 
 ---
 
-**最后更新**: 2026-03-16  
-**文档版本**: v1.0.0
+## OpenClaw Gateway（npm 全局）同步
+
+Admin 仅对 **`health_check_url`** 做 HTTP GET，不依赖本机是否安装 OpenClaw；若在 **Windows 开发机** 上本地跑 Gateway，可用全局包：
+
+```bash
+npm install -g openclaw@latest
+openclaw --version
+```
+
+**本机验证记录（维护）**：2026-04-14，`npm` 全局包版本 **2026.4.14**，CLI 输出示例 **`OpenClaw 2026.4.14 (323493f)`**；默认端口以启动参数为准（项目内 `tools/start-openclaw.ps1` 使用 **18789**，健康检查路径一般为 **`/health`**）。
+
+升级后若 Gateway 已在运行，请**重启**进程后再验 Admin 白名单探测。
+
+---
+
+**最后更新**: 2026-04-14  
+**文档版本**: v1.0.1
