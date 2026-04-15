@@ -1,6 +1,6 @@
 # Hermes Agent（NousResearch）安装可行性评估
 
-> **评估日期**：2026-04-14  
+> **评估日期**：2026-04-15（§2.4 WSL2 Gateway + `/health` 已实测）  
 > **上游同步**：2026-04-14，`main` @ **`4610551`**（`git pull` + `venv` 内 `pip install -e ".[dev]"` 或 `pip install -e "."`）  
 > **对象**：GitHub [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)（PyPI/源码安装，包版本仍为 **v0.9.0**，以 `pyproject.toml` 为准）  
 > **目的**：判断在 **Engine 同机** 部署及后续 **Admin HTTP 健康检查** 集成的可行性与注意事项。
@@ -41,8 +41,23 @@
 ### 2.3 结论（Windows 原生）
 
 - **核心依赖安装与 CLI 可用**：**可行**（本机已验证）。  
+- **`hermes gateway run`（Gateway 前台）**：**不可用**——`gateway/status.py` 使用 Unix 式 `os.kill(pid, 0)` 做存活检测，在 Windows 上会 **`OSError: [WinError 87]`**；**请使用 WSL2/Linux** 跑 Gateway。  
 - **运维与脚本**：官方脚本/服务安装（systemd、launchd）**面向 Unix**，Windows 需自行封装（计划任务、NSSM 等）。  
 - **终端编码**：自动化脚本中应设置 **`PYTHONUTF8=1`** 或使用 **`chcp 65001`**，避免 `doctor`、日志中的 emoji 触发编码错误。
+
+### 2.4 WSL2（本机已验证，推荐跑 Gateway）
+
+| 项 | 结果 |
+|----|------|
+| 发行版 | **Ubuntu 24.04**，WSL **2** |
+| Python | **3.12**（系统包 + **`/root/hermes-venv`**） |
+| 安装方式 | `pip install -e "/mnt/d/u3wv2/.dev/hermes-agent[dev]"`（与 Windows 侧同一克隆目录，经 `/mnt/d` 挂载） |
+| 启动命令 | **`API_SERVER_ENABLED=true` `hermes gateway run`**（CLI 子命令为 **`run`**，非裸 `gateway`） |
+| HTTP 健康检查 | **`http://127.0.0.1:8642/health`** → **HTTP 200**，JSON **`{"status":"ok","platform":"hermes-agent"}`**（从 **Windows** 侧 `curl` 验证） |
+
+**一键脚本（仓库内）**：`tools/start-hermes-wsl.ps1`（前台）；`-Background` 后台写 `/tmp/hermes-gw.out`。Shell 模板：`tools/hermes-wsl/gateway-run.sh`。
+
+> WSL 启动时若提示与 **localhost 代理 / NAT** 相关警告，一般**不影响**本机 `127.0.0.1:8642` 访问；若需消除，可在新版 Windows 11 的 **`.wslconfig`** 中尝试 **`networkingMode=mirrored`**（按微软文档操作）。
 
 ---
 
@@ -58,9 +73,8 @@
 ### 3.2 健康检查（HTTP）
 
 - **OpenClaw**：独立 Gateway，常配 **固定 HTTP 端口** 做 GET 探测。  
-- **Hermes**：Gateway 逻辑在仓库 **`gateway/`** 包内，**具体监听端口、是否提供 `/health` 类 HTTP**，需以 **实际运行 `hermes gateway` 的配置** 为准（并阅读 `gateway` 与 `web/` 下实现）。  
-- **本评估未启动 `hermes gateway`**（通常需先 `hermes setup`、配置 API Key/渠道，且可能依赖 Node/npm 等），**未实测 HTTP 端点**。  
-- **集成建议**：在方案落地阶段 **增加一步**：启动 Gateway 后，用 `curl`/浏览器确认 **Admin 可访问的 URL**（内网 IP + 路径），再写入 `ws_host_whitelist.health_check_url`。
+- **Hermes**：在 **WSL2** 启用 **`API_SERVER_ENABLED=true`** 并执行 **`hermes gateway run`** 时，默认 **API Server** 监听 **8642**，路径 **`/health`**（本机已用 `curl` 验证 **200**）。生产需配置 **`API_SERVER_KEY`** 等（日志会提示无密钥时匿名可访问）。  
+- **集成建议**：白名单 **`health_check_url`** 填 **`http://<主机>:8642/health`**（本机开发可用 **`http://127.0.0.1:8642/health`**）；若 Admin 在 Windows、Hermes 仅在 WSL，通常仍可用 **127.0.0.1**（WSL2 与 Windows 回环互通）。
 
 ### 3.3 资源与依赖
 
@@ -106,7 +120,5 @@ git fetch origin && git pull origin main
 
 启用 API Server 做 Admin 健康检查时（默认 **8642**，路径 **`/health`**）：
 
-```powershell
-$env:API_SERVER_ENABLED='true'
-.\venv\Scripts\hermes.exe gateway
-```
+- **WSL2**（推荐，见 §2.4）：`tools/start-hermes-wsl.ps1` 或 `hermes gateway run`（需 `API_SERVER_ENABLED=true`）。  
+- **Windows 原生**：仅 **`hermes --version` / doctor** 等可用；**不要**依赖 `hermes gateway run`（见 §2.3）。
