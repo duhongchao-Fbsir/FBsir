@@ -154,6 +154,10 @@ wxfbsir:
 # 日志配置
 # ========================================
 logging:
+  # 与 logback-spring.xml 一致使用 UTF-8；Windows CMD 需配合 chcp 65001 或 tools/start-engine.ps1
+  charset:
+    console: UTF-8
+    file: UTF-8
   level:
     root: INFO
     com.wx.fbsir.engine: DEBUG

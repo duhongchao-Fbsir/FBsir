@@ -142,6 +142,8 @@
                 <version>${spring-boot.version}</version>
                 <configuration>
                     <mainClass>com.wx.fbsir.engine.WxFbsirEngineApplication</mainClass>
+                    <!-- Windows 控制台乱码：与 UTF-8 日志一致，开发时 spring-boot:run 生效 -->
+                    <jvmArguments>-Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8</jvmArguments>
                     <excludes>
                         <exclude>
                             <groupId>org.projectlombok</groupId>

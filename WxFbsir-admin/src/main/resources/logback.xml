@@ -9,6 +9,7 @@
 	<appender name="console" class="ch.qos.logback.core.ConsoleAppender">
 		<encoder>
 			<pattern>${log.pattern}</pattern>
+			<charset>UTF-8</charset>
 		</encoder>
 	</appender>
 	
@@ -24,10 +25,11 @@
 		</rollingPolicy>
 		<encoder>
 			<pattern>${log.pattern}</pattern>
+			<charset>UTF-8</charset>
 		</encoder>
 		<filter class="ch.qos.logback.classic.filter.LevelFilter">
             <!-- 过滤的级别 -->
-            <level>INFO</level>
+			<level>INFO</level>
             <!-- 匹配时的操作：接收（记录） -->
             <onMatch>ACCEPT</onMatch>
             <!-- 不匹配时的操作：拒绝（不记录） -->
@@ -46,6 +48,7 @@
         </rollingPolicy>
         <encoder>
             <pattern>${log.pattern}</pattern>
+			<charset>UTF-8</charset>
         </encoder>
         <filter class="ch.qos.logback.classic.filter.LevelFilter">
             <!-- 过滤的级别 -->
@@ -68,6 +71,7 @@
         </rollingPolicy>
         <encoder>
             <pattern>${log.pattern}</pattern>
+			<charset>UTF-8</charset>
         </encoder>
     </appender>
 	

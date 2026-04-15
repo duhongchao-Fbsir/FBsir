@@ -61,6 +61,9 @@ server:
       min-spare: 100
 # 日志配置
 logging:
+  charset:
+    console: UTF-8
+    file: UTF-8
   level:
     root: info
     com.wx.fbsir: info
