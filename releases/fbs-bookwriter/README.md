@@ -10,4 +10,6 @@ cd fbs_bookwriter
 npm install
 ```
 
+ClawHub（安装）：<https://clawhub.ai/skills/fbs-bookwriter> · `openclaw skills install fbs-bookwriter`
+
 上游主页：<https://fbs-bookwriter.u3w.com/>
