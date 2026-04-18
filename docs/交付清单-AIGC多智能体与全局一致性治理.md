@@ -41,16 +41,18 @@
 
 ---
 
-## 四、数据流审计：已知风险与建议修复（未全部代码化）
+## 四、数据流审计：已知风险与修复状态
 
 详见 [运行维护/AIGC对话数据流审计与修复建议.md](运行维护/AIGC对话数据流审计与修复建议.md)。
 
-| 优先级 | 问题 | 建议 |
+| 优先级 | 问题 | 状态 |
 |--------|------|------|
-| **P0** | `AiSessionStateManager.createSession` 未被调用 | 在 `ClientMessageRouter` 首轮/聚合 `enabledAIs` 后幂等创建会话 |
-| **P0** | `getChatHistory` 按 `aiName` 筛选分支不全 | 补全 doubao、qianwen 等；`<otherwise>` 防「不过滤」 |
-| **P1** | 多 AI 并行预保存同一 `sessionId` 竞态 | 合并式预保存或串行化 |
-| **P2** | `engineMessageNormalizer` 默认 `unknown` | 与 `messageType` 反推对齐 |
+| **P0** | `AiSessionStateManager` 未接入 | **已修复**：`ClientMessageRouter.ensureSession` / `markAiStarted` |
+| **P0** | `getChatHistory` 按 `aiName` 筛选不全 | **已修复**：Mapper 补分支 + `otherwise` |
+| **P1** | 多 AI 并行预保存竞态 | **已修复**：`saveInitialRequest` 同步 + 已存在则跳过 |
+| **P2** | `engineMessageNormalizer` 默认 `unknown` | **已修复**：`inferAiTypeFromMessageType` |
+| **—** | 废弃 `AiResultHandler` 双写库 | **已删除** 占位类（无引用） |
+| **可选** | 产出物生成前 `results` 校验、能力 CI 对照 | 待办 |
 
 ---
 

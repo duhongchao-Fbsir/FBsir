@@ -1,14 +1,18 @@
 package com.wx.fbsir.business.websocket.server;
 
 import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONException;
 import com.alibaba.fastjson2.JSONObject;
 import com.wx.fbsir.business.aigc.domain.AiRequest;
+import com.wx.fbsir.business.aigc.manager.AiSessionStateManager;
 import com.wx.fbsir.business.aigc.service.IAigcService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -39,6 +43,7 @@ public class ClientMessageRouter {
     private final ClientSessionManager clientSessionManager;
     private final EngineSessionManager engineSessionManager;
     private final IAigcService aigcService;
+    private final AiSessionStateManager sessionStateManager;
     
     /**
      * 缓存 sessionId → chatId 映射
@@ -68,10 +73,12 @@ public class ClientMessageRouter {
 
     public ClientMessageRouter(ClientSessionManager clientSessionManager,
                                 EngineSessionManager engineSessionManager,
-                                IAigcService aigcService) {
+                                IAigcService aigcService,
+                                AiSessionStateManager sessionStateManager) {
         this.clientSessionManager = clientSessionManager;
         this.engineSessionManager = engineSessionManager;
         this.aigcService = aigcService;
+        this.sessionStateManager = sessionStateManager;
     }
 
     /**
@@ -163,6 +170,14 @@ public class ClientMessageRouter {
             // 说明：AI_前缀的消息需要预保存到数据库，payload完全透传给Engine
             // ==========================================================================
             if (sessionId != null && type != null && type.startsWith("AI_")) {
+                Set<String> expectedAis = resolveExpectedAiTypes(payload, type);
+                sessionStateManager.ensureSession(sessionId, userId, expectedAis);
+                if (payload != null) {
+                    String startAi = payload.getString("aiType");
+                    if (startAi != null && !startAi.isEmpty()) {
+                        sessionStateManager.markAiStarted(sessionId, startAi.toLowerCase());
+                    }
+                }
                 try {
                     AiRequest aiRequest = new AiRequest();
                     aiRequest.setSessionId(sessionId);
@@ -339,6 +354,67 @@ public class ClientMessageRouter {
             return clientId.substring(5);
         }
         return clientId;
+    }
+
+    /**
+     * 从 payload.enabledAIs 与 aiType、消息类型推断本轮参与的 AI 集合（供会话状态机使用）。
+     */
+    private Set<String> resolveExpectedAiTypes(JSONObject payload, String wsMessageType) {
+        Set<String> set = new LinkedHashSet<>();
+        if (payload != null) {
+            Object raw = payload.get("enabledAIs");
+            if (raw instanceof JSONArray arr) {
+                for (int i = 0; i < arr.size(); i++) {
+                    JSONObject o = arr.getJSONObject(i);
+                    if (o != null) {
+                        String id = o.getString("aiId");
+                        if (id != null && !id.isEmpty()) {
+                            set.add(id.toLowerCase());
+                        }
+                    }
+                }
+            }
+            String at = payload.getString("aiType");
+            if (at != null && !at.isEmpty()) {
+                set.add(at.toLowerCase());
+            }
+        }
+        if (set.isEmpty()) {
+            String inf = inferAiTypeFromMessageType(wsMessageType);
+            if (inf != null) {
+                set.add(inf);
+            }
+        }
+        return set;
+    }
+
+    private static String inferAiTypeFromMessageType(String messageType) {
+        if (messageType == null) {
+            return null;
+        }
+        String u = messageType.toUpperCase();
+        if (u.startsWith("AI_DEEPSEEK")) {
+            return "deepseek";
+        }
+        if (u.startsWith("AI_GITEE")) {
+            return "gitee";
+        }
+        if (u.startsWith("AI_DOUBAO")) {
+            return "doubao";
+        }
+        if (u.startsWith("AI_QIANWEN") || u.startsWith("AI_TONGYI")) {
+            return "qianwen";
+        }
+        if (u.startsWith("AI_YUANBAO")) {
+            return "yuanbao";
+        }
+        if (u.startsWith("AI_WENXIN")) {
+            return "wenxin";
+        }
+        if (u.startsWith("AI_MITA")) {
+            return "mita";
+        }
+        return null;
     }
 
     private String extractPlatformChatId(JSONObject payload, String aiType) {

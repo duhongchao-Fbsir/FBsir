@@ -44,18 +44,26 @@ public class AigcServiceImpl implements IAigcService {
 
     @Override
     public void saveInitialRequest(AiRequest aiRequest) {
-        // 🔥 预保存请求记录到聊天历史表（使用sessionId作为主键，便于后续更新）
-        Map<String, Object> chatData = new HashMap<>();
-        // 使用 sessionId 作为主键，确保后续 Engine 返回时能够更新同一条记录
-        chatData.put("id", aiRequest.getSessionId() != null ? aiRequest.getSessionId() : UUID.randomUUID().toString());
-        chatData.put("userId", aiRequest.getUserId());
-        chatData.put("userPrompt", aiRequest.getUserPrompt());
-        chatData.put("chatId", aiRequest.getChatId());  // 🔥 前端传递的会话分组ID
-        
-        // 保存完整的请求数据作为JSON（初始状态）
-        chatData.put("data", convertToJsonString(aiRequest));
-        
-        aigcMapper.saveChatData(chatData);
+        String sid = aiRequest.getSessionId();
+        if (sid == null || sid.isEmpty()) {
+            sid = UUID.randomUUID().toString();
+            aiRequest.setSessionId(sid);
+        }
+        // 多 AI 并行时仅首写插入，避免 ON DUPLICATE 覆盖 userPrompt/data 中间态
+        synchronized (sid.intern()) {
+            Map<String, Object> existing = aigcMapper.getChatBySessionId(sid);
+            if (existing != null && !existing.isEmpty()) {
+                log.debug("[AIGC] 预保存跳过，会话行已存在 sessionId={}", sid);
+                return;
+            }
+            Map<String, Object> chatData = new HashMap<>();
+            chatData.put("id", sid);
+            chatData.put("userId", aiRequest.getUserId());
+            chatData.put("userPrompt", aiRequest.getUserPrompt());
+            chatData.put("chatId", aiRequest.getChatId());
+            chatData.put("data", convertToJsonString(aiRequest));
+            aigcMapper.saveChatData(chatData);
+        }
     }
 
     @Override

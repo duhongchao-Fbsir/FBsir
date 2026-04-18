@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -58,6 +59,35 @@ public class AiSessionStateManager {
     }
 
     /**
+     * 幂等注册本轮会话期望参与的 AI（多路并发请求时合并 enabledAIs）。
+     */
+    public void ensureSession(String sessionId, String userId, Set<String> aiTypes) {
+        if (sessionId == null || sessionId.isEmpty() || userId == null || userId.isEmpty()
+            || aiTypes == null || aiTypes.isEmpty()) {
+            return;
+        }
+        Set<String> normalized = new HashSet<>();
+        for (String t : aiTypes) {
+            if (t != null && !t.isEmpty()) {
+                normalized.add(t.toLowerCase());
+            }
+        }
+        if (normalized.isEmpty()) {
+            return;
+        }
+        sessions.compute(sessionId, (sid, existing) -> {
+            if (existing == null) {
+                AiSessionState state = new AiSessionState(sid, userId, normalized);
+                log.info("[会话管理] ensureSession 新建 - 会话: {}, 用户: {}, AI: {}", sid, userId, normalized);
+                return state;
+            }
+            existing.mergeExpectedAiTypes(normalized);
+            log.debug("[会话管理] ensureSession 合并 - 会话: {}, 追加AI: {}", sid, normalized);
+            return existing;
+        });
+    }
+
+    /**
      * 标记某个AI任务开始
      * 
      * @param sessionId 会话ID
@@ -93,6 +123,7 @@ public class AiSessionStateManager {
             
             return allCompleted;
         }
+        log.debug("[会话管理] markAiCompleted 跳过：无会话记录 sessionId={} aiType={}", sessionId, aiType);
         return false;
     }
 
@@ -108,6 +139,8 @@ public class AiSessionStateManager {
         if (state != null) {
             state.markAiFailed(aiType, errorMessage);
             log.warn("[会话管理] ❌ AI任务失败 - 会话: {}, AI: {}, 错误: {}", sessionId, aiType, errorMessage);
+        } else {
+            log.debug("[会话管理] markAiFailed 跳过：无会话记录 sessionId={} aiType={}", sessionId, aiType);
         }
     }
 
@@ -173,6 +206,20 @@ public class AiSessionStateManager {
             this.failedAis = new CopyOnWriteArraySet<>();
             this.errorMessages = new ConcurrentHashMap<>();
             this.createTime = System.currentTimeMillis();
+        }
+
+        /**
+         * 合并期望参与的 AI（并发多请求各带 enabledAIs 时扩容集合）。
+         */
+        public void mergeExpectedAiTypes(Set<String> more) {
+            if (more == null || more.isEmpty()) {
+                return;
+            }
+            for (String t : more) {
+                if (t != null && !t.isEmpty()) {
+                    aiTypes.add(t.toLowerCase());
+                }
+            }
         }
 
         public void markAiStarted(String aiType) {

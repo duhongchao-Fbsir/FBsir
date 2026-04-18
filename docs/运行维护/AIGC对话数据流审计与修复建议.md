@@ -95,8 +95,8 @@
 
 ### P2｜双路径写库（已收口但仍需门禁）
 
-**现象**：`AiResultHandler` 已标记废弃，主路径为 `EngineMessageRouter`。  
-**建议**：全库确认无注册调用后 **删除类**；CI 中 `grep` 防止回流。
+**现象**：`AiResultHandler` 曾作为废弃占位。  
+**状态**：类已 **删除**；写库以 `EngineMessageRouter` 为唯一路径。建议在 CI 中对 `AiResultHandler` 字符串做 `grep` 防回流。
 
 ---
 
@@ -111,12 +111,16 @@
 
 ---
 
-## 4. 建议实施顺序
+## 4. 建议实施顺序与落地情况
 
-1. **P0**：`getChatHistory` 补全分支 + `otherwise` 防漏筛。  
-2. **P0**：`AiSessionStateManager` 在路由层接入 `createSession`（及幂等）。  
-3. **P1**：预保存并发策略（合并或串行）。  
-4. **P2**：前端 `aiType` 推断、草稿字段命名、删除废弃 Handler。
+| 项 | 状态 |
+|----|------|
+| P0 `getChatHistory` 补全 + `otherwise` | **已落地**（`AigcMapper.xml`） |
+| P0 `AiSessionStateManager` 路由接入 | **已落地**（`ClientMessageRouter.ensureSession`、`mergeExpectedAiTypes`） |
+| P1 预保存并发 | **已落地**（`saveInitialRequest` 同步块 + 已存在则跳过） |
+| P2 前端 `aiType` 推断 | **已落地**（`engineMessageNormalizer.js`） |
+| 删除 `AiResultHandler` | **已落地** |
+| 草稿 `user_name` 命名、产出物 `results` 校验、能力 CI | **仍建议**（可选） |
 
 ---
 

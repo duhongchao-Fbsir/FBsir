@@ -103,6 +103,27 @@
                 <when test="aiName == 'mita' or aiName == '秘塔' or aiName == 'metaso'">
                     AND metaso_chat_id IS NOT NULL
                 </when>
+                <when test="aiName == 'doubao' or aiName == '豆包'">
+                    AND db_chat_id IS NOT NULL
+                </when>
+                <when test="aiName == 'qianwen' or aiName == '千问' or aiName == '通义' or aiName == '通义千问' or aiName == 'tongyi'">
+                    AND tone_chat_id IS NOT NULL
+                </when>
+                <when test="aiName == 'ty'">
+                    AND ty_chat_id IS NOT NULL
+                </when>
+                <when test="aiName == 'kimi'">
+                    AND kimi_chat_id IS NOT NULL
+                </when>
+                <when test="aiName == 'minimax' or aiName == 'max'">
+                    AND max_chat_id IS NOT NULL
+                </when>
+                <when test="aiName == 'zhzd' or aiName == '知乎直答'">
+                    AND zhzd_chat_id IS NOT NULL
+                </when>
+                <otherwise>
+                    AND 1=0
+                </otherwise>
             </choose>
         </if>
         ORDER BY create_time DESC

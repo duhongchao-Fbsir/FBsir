@@ -83,7 +83,7 @@
 | 入站消息归一 | `engineMessageNormalizer.js` | 新增 Engine 消息类型时，先补归一字段再写 UI 分支 |
 | 出站负载构建 | `aiCapabilityMapper.js` `buildCompatibleAiPayload` | 新 AI 先补 `AI_CAPABILITY_MATRIX` 再放开开关 |
 | 会话与分组 ID | `chatId` / `sessionId` / `platformChatId` | 见数据流审计文档；禁止在业务层混用命名 |
-| 写库单路径 | `EngineMessageRouter` 为结果主路径 | `AiResultHandler` 仅保留废弃兼容，禁止新逻辑写入 |
+| 写库单路径 | `EngineMessageRouter` 为结果主路径 | 历史占位 `AiResultHandler` 已移除，禁止再引入第二写库路径 |
 | 回归 | `tools/e2e-aigc-regression.ps1` | 新 AI 或新能力必须增加 P0 烟测条 |
 
 ---
