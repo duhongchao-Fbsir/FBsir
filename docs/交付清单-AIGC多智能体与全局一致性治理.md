@@ -1,0 +1,101 @@
+# 交付清单：AIGC 多智能体改造与全局一致性治理（会话综合）
+
+> 本文档综合多轮交流与落地结果，便于交接、验收与后续迭代。  
+> 整理日期：2026-04-18  
+
+---
+
+## 一、目标与范围（我们达成了什么）
+
+| 主题 | 说明 |
+|------|------|
+| **多智能体并行** | 以 DeepSeek 为基线，统一 `aiType` / `chatId` / `sessionId` / 平台 `platformChatId` 契约；弱化默认 DeepSeek；历史恢复禁止误用通用 `nestedData.chatId` 回填 DeepSeek。 |
+| **登录与持久化** | Engine 侧元宝等扫码成功分支补充登录状态持久化（`saveLoginState`），避免「当次可用但未落库」。 |
+| **前端** | `engineMessageNormalizer.js`；`aigc/index.vue`（发送、进度、历史、复制、多 AI 草稿）；`drafts/index.vue`（复制时 AI 标识归一）；登录管理器与引擎配置对齐。 |
+| **草稿与 SQL** | `AigcMapper.xml`：草稿 AI 列表归一 `aiType`；`getDraftContent` 多别名匹配。 |
+| **可观测与门禁** | `ClientMessageRouter` / `EngineMessageRouter` 日志字段（`platformChatId`、`stage` 等）；`AiResultHandler` 标记废弃，唯一写库路径收口至 `EngineMessageRouter`；E2E 脚本 JSON 字段扩展。 |
+| **仓库与文档** | 主仓库对齐 **GitHub** [duhongchao-Fbsir/FBsir](https://github.com/duhongchao-Fbsir/FBsir)，默认分支 **`fbsir`**；全局替换过时 `U3W-AI` 克隆路径；`.gitignore` 忽略 `tools/out/`、`build-tools/`。 |
+| **全局洞察（延伸）** | 能力三层真源、产出物闭环、操作日志 vs WebSocket 排障、OpenAPI 与复用规范：见 [AI助手关联域全局洞察与一致性升级.md](架构与规范/AI助手关联域全局洞察与一致性升级.md)。 |
+
+---
+
+## 二、Git / 提交与远程
+
+| 项 | 状态 |
+|----|------|
+| **合并策略** | 采用 **单分支单 PR / 单提交 squash** 交付（`feat(aigc): multi-agent...`），另含 `chore(tools): pr-submit...`、`docs: align GitHub...` 等后续提交。 |
+| **远程** | `origin` → `https://github.com/duhongchao-Fbsir/FBsir.git`，**已推送** `fbsir`。 |
+| **待办** | 本地有新提交时执行 `git push origin fbsir`；若重写历史需 `--force-with-lease`。 |
+
+---
+
+## 三、自动化测试与 PR 准备（曾执行）
+
+| 步骤 | 命令 / 说明 |
+|------|----------------|
+| Maven 全模块测试 | 根目录 `mvn test`（可用 `build-tools/.../mvn.cmd`） |
+| Engine 测试 | `WxFbsir-engine` 模块 `mvn test` |
+| 前端 | `WxFbsir-ui`：`npm run build:prod`、`npm run test:aigc-mapper` |
+| E2E | `tools/e2e-aigc-regression.ps1`：P0 / P1（需本机 Admin+Engine+各站登录） |
+| PR 辅助 | [tools/pr-submit-aigc.md](../tools/pr-submit-aigc.md)（标题/正文模板、Reviewer 核对项） |
+
+---
+
+## 四、数据流审计：已知风险与建议修复（未全部代码化）
+
+详见 [运行维护/AIGC对话数据流审计与修复建议.md](运行维护/AIGC对话数据流审计与修复建议.md)。
+
+| 优先级 | 问题 | 建议 |
+|--------|------|------|
+| **P0** | `AiSessionStateManager.createSession` 未被调用 | 在 `ClientMessageRouter` 首轮/聚合 `enabledAIs` 后幂等创建会话 |
+| **P0** | `getChatHistory` 按 `aiName` 筛选分支不全 | 补全 doubao、qianwen 等；`<otherwise>` 防「不过滤」 |
+| **P1** | 多 AI 并行预保存同一 `sessionId` 竞态 | 合并式预保存或串行化 |
+| **P2** | `engineMessageNormalizer` 默认 `unknown` | 与 `messageType` 反推对齐 |
+
+---
+
+## 五、文档索引（按主题）
+
+| 文档 | 用途 |
+|------|------|
+| [全局一致性对齐说明.md](全局一致性对齐说明.md) | 品牌、模块、版本、配置键、源码托管、**§2.3 AI 关联域** |
+| [架构与规范/AI助手关联域全局洞察与一致性升级.md](架构与规范/AI助手关联域全局洞察与一致性升级.md) | 能力对齐、产出物、日志、OpenAPI、复用规范 |
+| [运行维护/AIGC对话数据流审计与修复建议.md](运行维护/AIGC对话数据流审计与修复建议.md) | 输入→持久化→Engine→回写 全链路问题与修复顺序 |
+| [aigc-test-matrix.md](aigc-test-matrix.md) | Gitee AI Chat vs OAuth 等场景边界 |
+| [docs/README.md](README.md) | 文档中心导航 |
+| [../tools/pr-submit-aigc.md](../tools/pr-submit-aigc.md) | PR 描述与推送说明 |
+| [../sql/MIGRATION_ORDER.txt](../sql/MIGRATION_ORDER.txt) | 数据库迁移顺序（若涉及） |
+
+---
+
+## 六、关键代码路径（速查）
+
+| 层级 | 路径 |
+|------|------|
+| 前端归一 / AIGC 页 | `WxFbsir-ui/src/utils/engineMessageNormalizer.js`、`views/business/content/aigc/index.vue`、`drafts/index.vue`、`config/engineConfig.js`、`utils/aiCapabilityMapper.js` |
+| Admin 路由 | `WxFbsir-business/.../ClientMessageRouter.java`、`EngineMessageRouter.java` |
+| AIGC 服务 | `WxFbsir-business/.../AigcServiceImpl.java`、`mapper/aigc/AigcMapper.xml` |
+| Engine 元宝等 | `WxFbsir-engine/.../YuanbaoController.java` 等 |
+| OpenAPI | `WxFbsir-admin/.../SwaggerConfig.java` |
+| E2E | `tools/e2e-aigc-regression.ps1`、`e2e-aigc-smoke.ps1` |
+
+---
+
+## 七、后续建议（可选）
+
+1. 按审计 **P0** 改代码并补回归用例。  
+2. `AigcController` 输出物相关接口补 **SpringDoc** 注解。  
+3. Engine 能力清单与前端矩阵 **CI 对照**。  
+4. 删除 `AiResultHandler` 前全库确认无引用。  
+
+---
+
+## 八、约束与约定（沟通过程中确认）
+
+- **不随意修改** 用户指定的「计划类」文件（若单独约定）。  
+- 大范围「代码整理」以 **与契约/审计直接相关** 为界，避免无测试覆盖的大规模格式化。  
+- 回归产物目录 **`tools/out/`** 不提交版本库。  
+
+---
+
+*本清单随仓库迭代更新；技术细节以代码与专题文档为准。*
