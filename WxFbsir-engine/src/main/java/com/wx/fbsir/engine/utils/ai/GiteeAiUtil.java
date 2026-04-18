@@ -604,9 +604,9 @@ public class GiteeAiUtil {
             log.warn("[Gitee AI] 探测仓库列表失败: {}", e.getMessage());
         }
 
-        // 兜底默认值
+        // 兜底：任选公开仓库路径，保证下拉非空（与主工程托管平台无关）
         if (options.isEmpty()) {
-            options.add("U3W-AI/U3W-AI");
+            options.add("oschina/git-osc");
         }
         return new ArrayList<>(options);
     }

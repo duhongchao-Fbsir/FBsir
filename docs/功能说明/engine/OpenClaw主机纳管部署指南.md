@@ -67,8 +67,8 @@
 #### 1.1 构建后端项目
 
 ```bash
-# 进入项目根目录
-cd d:\code\project\U3W-AI-fbsir\U3W-AI-fbsir
+# 进入项目根目录（请替换为本机实际路径）
+cd D:\path\to\FBsir
 
 # 构建项目
 mvn clean package -DskipTests

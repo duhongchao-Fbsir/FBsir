@@ -27,7 +27,7 @@ git status
 git push --force-with-lease origin fbsir   # 若曾推送过旧历史；首次推送则用 git push -u origin fbsir
 ```
 
-在 Gitee/GitHub 上：**base** 选目标主分支（如 `main`/`master`），**compare** 选 `fbsir`，创建 Pull Request。
+在 **GitHub**（主仓库 [duhongchao-Fbsir/FBsir](https://github.com/duhongchao-Fbsir/FBsir)）上：默认分支为 **`fbsir`**；若使用 PR 工作流，**base** 选目标分支，**compare** 选功能分支后创建 Pull Request。
 
 ---
 
