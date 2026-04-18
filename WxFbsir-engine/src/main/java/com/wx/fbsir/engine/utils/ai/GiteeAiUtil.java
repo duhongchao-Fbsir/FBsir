@@ -2,15 +2,20 @@ package com.wx.fbsir.engine.utils.ai;
 
 import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
-import com.microsoft.playwright.TimeoutError;
 import com.microsoft.playwright.options.LoadState;
 import com.microsoft.playwright.options.WaitUntilState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.Set;
 
 /**
  * Gitee AI Chat 平台工具类
@@ -59,6 +64,40 @@ import java.util.HashMap;
 public class GiteeAiUtil {
 
     private static final Logger log = LoggerFactory.getLogger(GiteeAiUtil.class);
+
+    public static class ModeApplyResult {
+        private final String modeName;
+        private final List<String> repositoryChoices;
+        private final String selectedRepository;
+
+        public ModeApplyResult(String modeName, List<String> repositoryChoices, String selectedRepository) {
+            this.modeName = modeName;
+            this.repositoryChoices = repositoryChoices != null ? repositoryChoices : new ArrayList<>();
+            this.selectedRepository = selectedRepository;
+        }
+
+        public String getModeName() {
+            return modeName;
+        }
+
+        public List<String> getRepositoryChoices() {
+            return repositoryChoices;
+        }
+
+        public String getSelectedRepository() {
+            return selectedRepository;
+        }
+    }
+
+    private static class RepositoryDialogResult {
+        private final List<String> repositoryChoices;
+        private final String selectedRepository;
+
+        private RepositoryDialogResult(List<String> repositoryChoices, String selectedRepository) {
+            this.repositoryChoices = repositoryChoices != null ? repositoryChoices : new ArrayList<>();
+            this.selectedRepository = selectedRepository;
+        }
+    }
     
     /**
      * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -116,32 +155,26 @@ public class GiteeAiUtil {
          */
         
         try {
-            // 🎯 策略0：检测"未登陆"文字（最优先，最准确）
-            try {
-                Locator notLoggedIn = page.locator("text=未登陆, text=未登录");
-                if (notLoggedIn.count() > 0 && notLoggedIn.first().isVisible()) {
-                    log.debug("🔍 [Gitee AI] 检测到'未登陆'文字，用户未登录1");
-                    return "false";
-                }
-            } catch (Exception e) {
-                log.trace("检测'未登陆'文字异常: {}", e.getMessage());
-            }
-            
-            // 策略1：检测是否有"登录"按钮（未登录的标志）
-            try {
-                Locator loginButton = page.locator("button:has-text('登录'), a:has-text('登录'), button:has-text('立即登录')");
-                if (loginButton.count() > 0 && loginButton.first().isVisible()) {
-                    log.debug("🔍 [Gitee AI] 检测到登录按钮，用户未登录2");
-                    return "false";
-                }
-            } catch (Exception e) {
-                log.trace("检测登录按钮异常: {}", e.getMessage());
-            }
-            
-            // 策略2：通过 URL 判断（如果在登录页则未登录）
             String currentUrl = page.url();
             if (currentUrl.contains("login") || currentUrl.contains("signin") || currentUrl.contains("sign_in")) {
-                log.debug("🔍 [Gitee AI] 当前在登录页，用户未登录3");
+                log.debug("🔍 [Gitee AI] 当前在登录页，用户未登录");
+                return "false";
+            }
+
+            // 强登录态优先：编辑区可用时直接判登录，避免被页面中无关提示文案误伤。
+            if (hasMainComposerReady(page)) {
+                return "Gitee用户";
+            }
+
+            // 明确的扫码登录面板可见，判未登录。
+            if (isWechatLoginPanelVisible(page)) {
+                log.debug("🔍 [Gitee AI] 检测到扫码登录面板，用户未登录");
+                return "false";
+            }
+
+            // 仅把“顶部主登录入口”作为未登录依据，避免弹层/客服提示里的“登录”文案造成误判。
+            if (isPrimaryLoginButtonVisible(page)) {
+                log.debug("🔍 [Gitee AI] 检测到顶部登录入口，用户未登录");
                 return "false";
             }
             
@@ -151,7 +184,7 @@ public class GiteeAiUtil {
                 Locator userNameElement = page.locator(".user-name, .username, [class*='username'], [class*='user-info']").first();
                 if (userNameElement.count() > 0 && userNameElement.isVisible()) {
                     String userName = userNameElement.textContent().trim();
-                    if (!userName.isEmpty() && !userName.equals("未登陆") && !userName.equals("未登录")) {
+                    if (!userName.isEmpty() && !userName.equals("未登录") && !userName.equals("未登陆")) {
                         log.debug("✅ [Gitee AI] 已登录1，用户: {}", userName);
                         return userName;
                     }
@@ -171,18 +204,113 @@ public class GiteeAiUtil {
                 log.trace("检测用户头像异常: {}", e.getMessage());
             }
             
-            // 🔍 调试：输出页面结构帮助定位正确的选择器
-            try {
-                String bodyHtml = page.locator("body").innerHTML();
-                log.warn("⚠️ [Gitee AI] 无法确定登录状态，默认返回未登录（URL: {}）", currentUrl);
-            } catch (Exception e) {
-                log.warn("⚠️ [Gitee AI] 无法确定登录状态，默认返回未登录（URL: {}）", currentUrl);
+            // 再次兜底：避免首次渲染抖动导致误判。
+            if (hasMainComposerReady(page)) {
+                return "Gitee用户";
             }
+            log.warn("⚠️ [Gitee AI] 无法确定登录状态，默认返回未登录（URL: {}）", currentUrl);
             return "false";
             
         } catch (Exception e) {
             log.error("❌ [Gitee AI] 登录状态检测失败: {}", e.getMessage());
             return "false";
+        }
+    }
+
+    private boolean hasMainComposerReady(Page page) {
+        try {
+            Object o = page.evaluate("""
+                () => {
+                  const isVisible = (el) => {
+                    if (!el) return false;
+                    const st = window.getComputedStyle(el);
+                    const r = el.getBoundingClientRect();
+                    return r.width > 40 && r.height > 20 && st.display !== 'none' && st.visibility !== 'hidden';
+                  };
+                  const input = document.querySelector('textarea, input[type="text"], div[contenteditable="true"]');
+                  if (!isVisible(input)) return false;
+                  const body = (document.body && document.body.innerText) ? document.body.innerText : '';
+                  if (body.includes('扫码登录') || body.includes('微信登录')) return false;
+                  return true;
+                }
+                """);
+            return Boolean.TRUE.equals(o);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean isWechatLoginPanelVisible(Page page) {
+        try {
+            Object o = page.evaluate("""
+                () => {
+                  const isVisible = (el) => {
+                    if (!el) return false;
+                    const st = window.getComputedStyle(el);
+                    const r = el.getBoundingClientRect();
+                    return r.width > 20 && r.height > 20 && st.display !== 'none' && st.visibility !== 'hidden';
+                  };
+                  const qrSel = [
+                    '.js_qrcode_img.web_qrcode_img',
+                    '.web_qrcode_img_wrap',
+                    '.js_normal_login.web_qrcode_img_area',
+                    'iframe[src*="open.weixin.qq.com"]',
+                    'img[src*="qrcode"], img[class*="qrcode"], canvas'
+                  ];
+                  for (const sel of qrSel) {
+                    const el = document.querySelector(sel);
+                    if (isVisible(el)) return true;
+                  }
+                  const body = (document.body && document.body.innerText) ? document.body.innerText : '';
+                  return body.includes('扫码登录') || body.includes('微信登录');
+                }
+                """);
+            return Boolean.TRUE.equals(o);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean isPrimaryLoginButtonVisible(Page page) {
+        try {
+            Object o = page.evaluate("""
+                () => {
+                  const labels = ['登录', '立即登录', '去登录', '登录/注册'];
+                  const nodes = document.querySelectorAll('button, a, [role="button"]');
+                  for (const el of nodes) {
+                    const txt = (el.innerText || '').trim();
+                    if (!labels.includes(txt)) continue;
+                    const st = window.getComputedStyle(el);
+                    const r = el.getBoundingClientRect();
+                    if (r.width < 36 || r.height < 20 || st.display === 'none' || st.visibility === 'hidden') continue;
+                    // 仅视为“主登录入口”：顶部区域，避免对话/弹层中无关提示文案干扰。
+                    if (r.top < 260) return true;
+                  }
+                  return false;
+                }
+                """);
+            return Boolean.TRUE.equals(o);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean locatorLooksLikeQrContainer(Locator locator) {
+        try {
+            Object o = locator.evaluate("""
+                (el) => {
+                  const st = window.getComputedStyle(el);
+                  const rect = el.getBoundingClientRect();
+                  if (st.display === 'none' || st.visibility === 'hidden') return false;
+                  if (rect.width < 80 || rect.height < 80) return false;
+                  if (el.tagName === 'IMG' || el.tagName === 'CANVAS') return true;
+                  const childQr = el.querySelector('img[src*="qr"], img[class*="qr"], img[src*="qrcode"], canvas, iframe[src*="open.weixin.qq.com"]');
+                  return !!childQr;
+                }
+                """);
+            return Boolean.TRUE.equals(o);
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -206,16 +334,16 @@ public class GiteeAiUtil {
 
             boolean loginEntryClicked = false;
 
-            // 方案1：旧版页面的「未登陆」入口
+            // 方案1：兼容旧版页面的「未登录/未登陆」入口文案
             try {
-                Locator loginEntry = page.getByText("未登陆").first();
+                Locator loginEntry = page.locator("text=未登录, text=未登陆").first();
                 if (loginEntry.count() > 0 && loginEntry.isVisible()) {
                     loginEntry.click();
                     loginEntryClicked = true;
-                    log.info("✅ [Gitee AI] 已点击「未登陆」入口，等待登录界面加载");
+                    log.info("✅ [Gitee AI] 已点击「未登录」入口，等待登录界面加载");
                 }
             } catch (Exception e) {
-                log.debug("[Gitee AI] 点击「未登陆」入口失败: {}", e.getMessage());
+                log.debug("[Gitee AI] 点击「未登录」入口失败: {}", e.getMessage());
             }
 
             // 方案2：当前页面直接显示登录按钮
@@ -349,6 +477,202 @@ public class GiteeAiUtil {
         }
     }
     
+    /**
+     * 切换Gitee对话模式（开源探索 / 仓库问答 / 帮助中心）
+     */
+    public ModeApplyResult applyConversationMode(Page page,
+                                                 boolean enableOpenSourceExploration,
+                                                 boolean enableRepositoryQA,
+                                                 boolean enableHelpCenter,
+                                                 String repositoryName) {
+        int selectedModeCount = (enableOpenSourceExploration ? 1 : 0)
+            + (enableRepositoryQA ? 1 : 0)
+            + (enableHelpCenter ? 1 : 0);
+
+        if (selectedModeCount == 0) {
+            return new ModeApplyResult("normal", new ArrayList<>(), null);
+        }
+        if (selectedModeCount > 1) {
+            throw new RuntimeException("Gitee模式互斥：开源探索/仓库问答/帮助中心只能选择一个");
+        }
+
+        if (enableRepositoryQA) {
+            return activateRepositoryQAMode(page, repositoryName);
+        }
+
+        String modeText = enableOpenSourceExploration ? "开源探索" : "帮助中心";
+        activateSimpleMode(page, modeText);
+        return new ModeApplyResult(modeText, new ArrayList<>(), null);
+    }
+
+    /**
+     * 探测「仓库问答 -> 选择仓库」弹窗中的仓库列表（用于前端下拉动态映射）
+     */
+    public List<String> detectRepositoryChoices(Page page) {
+        Set<String> options = new LinkedHashSet<>();
+        try {
+            // 先尽量进入“仓库问答”态，再触发“选择仓库”弹窗
+            boolean repoQaClicked = clickRepositoryQaEntry(page);
+            page.waitForTimeout(600);
+
+            // 若尚未出现弹窗，尝试点击“选择仓库”入口
+            if (!isTextVisible(page, "选择仓库")) {
+                clickRepositoryPickerEntry(page);
+                page.waitForTimeout(500);
+            }
+
+            if (!isTextVisible(page, "选择仓库")) {
+                log.warn("[Gitee AI] 探测仓库列表失败：未能打开“选择仓库”弹窗，repoQaClicked={}", repoQaClicked);
+                return new ArrayList<>(options);
+            }
+
+            // 先读取当前已选仓库（弹窗里的选择框文本）
+            String[] selectedRepoSelectors = {
+                "[role='combobox']",
+                ".ant-select-selection-item",
+                ".el-select .el-input__inner",
+                "input[placeholder*='选择仓库']"
+            };
+            for (String selector : selectedRepoSelectors) {
+                try {
+                    Locator selected = page.locator(selector).first();
+                    if (selected.count() > 0 && selected.isVisible()) {
+                        String text = selected.textContent();
+                        String normalized = normalizeRepositoryText(text);
+                        if (normalized != null) {
+                            options.add(normalized);
+                        }
+                    }
+                } catch (Exception ignore) {
+                    // 忽略当前选择器
+                }
+            }
+
+            // 点击选择框展开候选仓库列表
+            String[] dropdownTriggers = {
+                "[role='combobox']",
+                ".ant-select-selector",
+                "input[placeholder*='选择仓库']",
+                "span:has-text('选择仓库')"
+            };
+            for (String selector : dropdownTriggers) {
+                try {
+                    Locator trigger = page.locator(selector).first();
+                    if (trigger.count() > 0 && trigger.isVisible()) {
+                        trigger.click(new Locator.ClickOptions().setTimeout(2500).setForce(true));
+                        page.waitForTimeout(500);
+                        break;
+                    }
+                } catch (Exception ignore) {
+                    // 尝试下一个触发器
+                }
+            }
+
+            // 抓取下拉仓库项文本
+            String[] optionSelectors = {
+                "[role='option']",
+                ".ant-select-item-option-content",
+                ".el-select-dropdown__item",
+                "li",
+                "div[class*='option']"
+            };
+            for (String selector : optionSelectors) {
+                try {
+                    Locator items = page.locator(selector);
+                    int count = Math.min(items.count(), 40);
+                    for (int i = 0; i < count; i++) {
+                        Locator item = items.nth(i);
+                        if (!item.isVisible()) {
+                            continue;
+                        }
+                        String text = item.textContent();
+                        String normalized = normalizeRepositoryText(text);
+                        if (normalized == null) {
+                            continue;
+                        }
+                        options.add(normalized);
+                    }
+                } catch (Exception ignore) {
+                    // 尝试下一个选择器
+                }
+            }
+
+            // 关闭弹窗，避免影响后续对话
+            closeRepositoryDialog(page);
+
+        } catch (Exception e) {
+            log.warn("[Gitee AI] 探测仓库列表失败: {}", e.getMessage());
+        }
+
+        // 兜底默认值
+        if (options.isEmpty()) {
+            options.add("U3W-AI/U3W-AI");
+        }
+        return new ArrayList<>(options);
+    }
+
+    // 兼容旧调用名
+    public List<String> detectRepositorySubOptions(Page page) {
+        return detectRepositoryChoices(page);
+    }
+
+    /**
+     * 上传文件到Gitee AI
+     */
+    public boolean uploadFile(Page page, String filePath) {
+        try {
+            Path path = Paths.get(filePath);
+            if (!path.toFile().exists()) {
+                log.error("[Gitee文件上传] 文件不存在: {}", filePath);
+                return false;
+            }
+
+            // 优先使用 input[type=file] 直接上传
+            try {
+                Locator fileInput = page.locator("input[type='file']");
+                if (fileInput.count() > 0) {
+                    fileInput.first().setInputFiles(path);
+                    page.waitForTimeout(1200);
+                    log.info("[Gitee文件上传] 已通过 input[type=file] 上传");
+                    return true;
+                }
+            } catch (Exception e) {
+                log.debug("[Gitee文件上传] input[type=file] 上传失败: {}", e.getMessage());
+            }
+
+            // 兜底：点击上传入口触发 file chooser
+            String[] uploadTriggers = {
+                "button:has-text('上传')",
+                "[role='button']:has-text('上传')",
+                "button[aria-label*='上传']",
+                "[class*='upload']",
+                "[class*='attach']",
+                "button:has-text('+')"
+            };
+            for (String selector : uploadTriggers) {
+                try {
+                    Locator trigger = page.locator(selector).first();
+                    if (trigger.count() > 0 && trigger.isVisible()) {
+                        page.waitForFileChooser(() -> trigger.click(
+                            new Locator.ClickOptions().setTimeout(5000).setForce(true)
+                        )).setFiles(path);
+                        page.waitForTimeout(1200);
+                        log.info("[Gitee文件上传] 已通过触发器上传: {}", selector);
+                        return true;
+                    }
+                } catch (Exception e) {
+                    log.debug("[Gitee文件上传] 触发器失败 {}: {}", selector, e.getMessage());
+                }
+            }
+
+            log.warn("[Gitee文件上传] 未找到可用上传入口");
+            return false;
+        } catch (Exception e) {
+            log.error("[Gitee文件上传] 上传异常: {}", e.getMessage(), e);
+            return false;
+        }
+    }
+
 
     /**
      * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -365,6 +689,12 @@ public class GiteeAiUtil {
     }
     
     public String sendMessageAndWaitResponse(Page page, String query, boolean enableOpenSourceExploration, boolean enableHelpCenter) {
+        return sendMessageAndWaitResponse(page, query, enableOpenSourceExploration, false, enableHelpCenter, null);
+    }
+
+    public String sendMessageAndWaitResponse(Page page, String query, boolean enableOpenSourceExploration,
+                                             boolean enableRepositoryQA, boolean enableHelpCenter,
+                                             String repositoryName) {
         try {
             log.info("💬 [Gitee AI] 开始发送消息: {}", query);
             
@@ -373,17 +703,7 @@ public class GiteeAiUtil {
             page.waitForTimeout(1000);
             log.debug("✅ [Gitee AI] 页面已稳定");
             
-            // 切换模式
-            try {
-                if (enableOpenSourceExploration) {
-                    toggleGiteeMode(page, "开源探索", true);
-                } else if (enableHelpCenter) {
-                    toggleGiteeMode(page, "帮助中心", true);
-                }
-                // 注意：不选择模式时，不强制关闭现有模式，让用户保持当前设置
-            } catch (Exception e) {
-                log.warn("[Gitee AI] 模式切换失败，继续发送消息: {}", e.getMessage());
-            }
+            applyConversationMode(page, enableOpenSourceExploration, enableRepositoryQA, enableHelpCenter, repositoryName);
             
             boolean inputSuccess = fillAndSendMessage(page, query);
             if (!inputSuccess) {
@@ -405,6 +725,383 @@ public class GiteeAiUtil {
         } catch (Exception e) {
             log.error("❌ [Gitee AI] 发送消息失败: {}", e.getMessage(), e);
             return null;
+        }
+    }
+
+    private void activateSimpleMode(Page page, String modeText) {
+        for (int i = 0; i < 3; i++) {
+            if (clickVisibleTextOption(page, modeText)) {
+                page.waitForTimeout(600);
+                log.info("[Gitee AI] 模式切换成功: {}", modeText);
+                return;
+            }
+            page.waitForTimeout(400);
+        }
+        throw new RuntimeException("Gitee模式切换失败，未找到可点击项: " + modeText);
+    }
+
+    private ModeApplyResult activateRepositoryQAMode(Page page, String repositoryName) {
+        if (!clickRepositoryQaEntry(page)) {
+            log.warn("[Gitee AI] 当前页面未找到“仓库问答”入口，尝试跳转首页后重试");
+            try {
+                page.navigate(GITEE_AI_HOME_URL, new Page.NavigateOptions()
+                    .setWaitUntil(WaitUntilState.DOMCONTENTLOADED)
+                    .setTimeout(12000));
+                page.waitForLoadState(LoadState.NETWORKIDLE, new Page.WaitForLoadStateOptions().setTimeout(8000));
+                page.waitForTimeout(800);
+            } catch (Exception e) {
+                log.warn("[Gitee AI] 跳转首页重试仓库问答入口失败: {}", e.getMessage());
+            }
+            if (!clickRepositoryQaEntry(page)) {
+                throw new RuntimeException("未找到“仓库问答”模式入口");
+            }
+        }
+        page.waitForTimeout(600);
+
+        RepositoryDialogResult dialogResult = handleRepositorySelectionDialog(page, repositoryName);
+        if (dialogResult == null) {
+            log.info("[Gitee AI] 仓库问答模式无仓库选择弹窗，按直接切换处理");
+            return new ModeApplyResult("仓库问答", new ArrayList<>(), null);
+        }
+
+        // 校验页面上至少仍可见仓库问答文本，作为最小切换确认
+        if (!isTextVisible(page, "仓库问答")) {
+            throw new RuntimeException("仓库问答模式切换后未检测到模式标识");
+        }
+        return new ModeApplyResult("仓库问答", dialogResult.repositoryChoices, dialogResult.selectedRepository);
+    }
+
+    private RepositoryDialogResult handleRepositorySelectionDialog(Page page, String repositoryName) {
+        if (!isTextVisible(page, "选择仓库")) {
+            return null;
+        }
+
+        log.info("[Gitee AI] 检测到仓库选择弹窗，开始处理");
+        page.waitForTimeout(400);
+        List<String> detectedChoices = collectRepositoryChoicesFromDialog(page);
+        String selectedRepository = extractCurrentRepositoryFromDialog(page);
+
+        // 可选：按名称选择仓库
+        if (repositoryName != null && !repositoryName.trim().isEmpty()) {
+            boolean selected = trySelectRepository(page, repositoryName.trim());
+            if (selected) {
+                selectedRepository = repositoryName.trim();
+            }
+        }
+
+        String[] confirmSelectors = {
+            "button:has-text('确定')",
+            "[role='button']:has-text('确定')",
+            "button:has-text('确认')",
+            ".ant-modal-footer .ant-btn-primary",
+            ".ant-modal .ant-btn-primary",
+            "button.ant-btn-primary",
+            ".ant-btn-primary"
+        };
+
+        for (String selector : confirmSelectors) {
+            try {
+                Locator confirmBtn = page.locator(selector).first();
+                if (confirmBtn.count() > 0 && confirmBtn.isVisible() && !confirmBtn.isDisabled()) {
+                    confirmBtn.click(new Locator.ClickOptions().setTimeout(5000).setForce(true));
+                    page.waitForTimeout(800);
+                    if (!isTextVisible(page, "选择仓库")) {
+                        log.info("[Gitee AI] 仓库选择已确认");
+                        return new RepositoryDialogResult(detectedChoices, selectedRepository);
+                    }
+                    log.debug("[Gitee AI] 确认按钮点击后弹窗仍存在，继续尝试其他确认路径");
+                }
+            } catch (Exception e) {
+                log.debug("[Gitee AI] 点击确认按钮失败 {}: {}", selector, e.getMessage());
+            }
+        }
+
+        // 兜底1：对输入框回车提交（部分页面无明确“确定”按钮）
+        String[] submitInputs = {
+            "input[placeholder*='选择仓库']",
+            "[role='combobox'] input",
+            ".ant-select-selection-search-input"
+        };
+        for (String selector : submitInputs) {
+            try {
+                Locator input = page.locator(selector).first();
+                if (input.count() > 0 && input.isVisible()) {
+                    input.press("Enter", new Locator.PressOptions().setTimeout(2000));
+                    page.waitForTimeout(700);
+                    if (!isTextVisible(page, "选择仓库")) {
+                        log.info("[Gitee AI] 仓库选择已通过回车确认");
+                        return new RepositoryDialogResult(detectedChoices, selectedRepository);
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("[Gitee AI] 回车确认仓库失败 {}: {}", selector, e.getMessage());
+            }
+        }
+
+        // 兜底2：无法确认时尝试关闭弹窗并继续（保持当前默认仓库），避免整条链路失败
+        closeRepositoryDialog(page);
+        page.waitForTimeout(500);
+        if (!isTextVisible(page, "选择仓库")) {
+            log.warn("[Gitee AI] 未找到可点击确认按钮，已关闭弹窗并继续使用当前仓库");
+            return new RepositoryDialogResult(detectedChoices, selectedRepository);
+        }
+
+        try {
+            page.keyboard().press("Escape");
+            page.waitForTimeout(500);
+            if (!isTextVisible(page, "选择仓库")) {
+                log.warn("[Gitee AI] 未找到确认按钮，已通过Esc关闭弹窗并继续");
+                return new RepositoryDialogResult(detectedChoices, selectedRepository);
+            }
+        } catch (Exception e) {
+            log.debug("[Gitee AI] Esc关闭弹窗失败: {}", e.getMessage());
+        }
+
+        // 最后降级：不再抛错中断，保留默认仓库继续发问
+        log.warn("[Gitee AI] 仓库问答弹窗存在但无法确认，将继续使用当前仓库进行对话");
+        return new RepositoryDialogResult(detectedChoices, selectedRepository);
+    }
+
+    private boolean trySelectRepository(Page page, String repositoryName) {
+        String[] selectTriggers = {
+            "[class*='select']:has-text('选择仓库')",
+            "[class*='selector']",
+            "[role='combobox']",
+            "input[placeholder*='选择仓库']"
+        };
+
+        for (String triggerSelector : selectTriggers) {
+            try {
+                Locator trigger = page.locator(triggerSelector).first();
+                if (trigger.count() > 0 && trigger.isVisible()) {
+                    trigger.click(new Locator.ClickOptions().setTimeout(4000).setForce(true));
+                    page.waitForTimeout(300);
+
+                    String[] optionSelectors = {
+                        "li:has-text('" + repositoryName + "')",
+                        "[role='option']:has-text('" + repositoryName + "')",
+                        "div:has-text('" + repositoryName + "')"
+                    };
+
+                    for (String optionSelector : optionSelectors) {
+                        Locator option = page.locator(optionSelector).first();
+                        if (option.count() > 0 && option.isVisible()) {
+                            option.click(new Locator.ClickOptions().setTimeout(4000).setForce(true));
+                            page.waitForTimeout(300);
+                            log.info("[Gitee AI] 仓库已选择: {}", repositoryName);
+                            return true;
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("[Gitee AI] 仓库选择触发器失败 {}: {}", triggerSelector, e.getMessage());
+            }
+        }
+
+        log.warn("[Gitee AI] 未成功按名称选择仓库，继续使用默认仓库: {}", repositoryName);
+        return false;
+    }
+
+    private List<String> collectRepositoryChoicesFromDialog(Page page) {
+        Set<String> options = new LinkedHashSet<>();
+        String currentSelected = extractCurrentRepositoryFromDialog(page);
+        if (currentSelected != null && !currentSelected.isEmpty()) {
+            options.add(currentSelected);
+        }
+
+        String[] dropdownTriggers = {
+            "[role='combobox']",
+            ".ant-select-selector",
+            "input[placeholder*='选择仓库']",
+            "span:has-text('选择仓库')"
+        };
+        for (String selector : dropdownTriggers) {
+            try {
+                Locator trigger = page.locator(selector).first();
+                if (trigger.count() > 0 && trigger.isVisible()) {
+                    trigger.click(new Locator.ClickOptions().setTimeout(2500).setForce(true));
+                    page.waitForTimeout(400);
+                    break;
+                }
+            } catch (Exception ignore) {
+                // 尝试下一个触发器
+            }
+        }
+
+        String[] optionSelectors = {
+            "[role='option']",
+            ".ant-select-item-option-content",
+            ".el-select-dropdown__item",
+            "li",
+            "div[class*='option']"
+        };
+        for (String selector : optionSelectors) {
+            try {
+                Locator items = page.locator(selector);
+                int count = Math.min(items.count(), 40);
+                for (int i = 0; i < count; i++) {
+                    Locator item = items.nth(i);
+                    if (!item.isVisible()) {
+                        continue;
+                    }
+                    String normalized = normalizeRepositoryText(item.textContent());
+                    if (normalized != null) {
+                        options.add(normalized);
+                    }
+                }
+            } catch (Exception ignore) {
+                // 忽略该选择器
+            }
+        }
+        return new ArrayList<>(options);
+    }
+
+    private String extractCurrentRepositoryFromDialog(Page page) {
+        String[] selectedRepoSelectors = {
+            ".ant-select-selection-item",
+            "[role='combobox']",
+            ".el-select .el-input__inner",
+            "input[placeholder*='选择仓库']"
+        };
+        for (String selector : selectedRepoSelectors) {
+            try {
+                Locator selected = page.locator(selector).first();
+                if (selected.count() > 0 && selected.isVisible()) {
+                    String normalized = normalizeRepositoryText(selected.textContent());
+                    if (normalized != null) {
+                        return normalized;
+                    }
+                }
+            } catch (Exception ignore) {
+                // 尝试下一个
+            }
+        }
+        return null;
+    }
+
+    private boolean clickVisibleTextOption(Page page, String text) {
+        String[] selectors = {
+            "button:has-text('" + text + "')",
+            "[role='button']:has-text('" + text + "')",
+            "span:has-text('" + text + "')",
+            "div:has-text('" + text + "')",
+            "a:has-text('" + text + "')"
+        };
+
+        for (String selector : selectors) {
+            try {
+                Locator locator = page.locator(selector).first();
+                if (locator.count() > 0 && locator.isVisible(new Locator.IsVisibleOptions().setTimeout(1200))) {
+                    locator.click(new Locator.ClickOptions().setTimeout(4000).setForce(true));
+                    return true;
+                }
+            } catch (Exception ignore) {
+                // 尝试下一个选择器
+            }
+        }
+
+        return false;
+    }
+
+    private boolean isTextVisible(Page page, String text) {
+        try {
+            Locator locator = page.locator("text=" + text).first();
+            return locator.count() > 0 && locator.isVisible(new Locator.IsVisibleOptions().setTimeout(1200));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private String normalizeRepositoryText(String text) {
+        if (text == null) {
+            return null;
+        }
+        String normalized = text.replaceAll("\\s+", " ").trim();
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        if (normalized.length() > 80) {
+            return null;
+        }
+        if (normalized.contains("仓库问答") || normalized.contains("切换人设")
+            || normalized.contains("选择仓库") || normalized.contains("确定")
+            || normalized.contains("取消") || normalized.contains("默认")) {
+            return null;
+        }
+        if (!normalized.contains("/") && !normalized.contains("-") && normalized.length() < 3) {
+            return null;
+        }
+        return normalized;
+    }
+
+    private void closeRepositoryDialog(Page page) {
+        String[] closeSelectors = {
+            "button:has-text('取消')",
+            "[role='button']:has-text('取消')",
+            "button[aria-label='Close']",
+            ".ant-modal-close"
+        };
+        for (String selector : closeSelectors) {
+            try {
+                Locator close = page.locator(selector).first();
+                if (close.count() > 0 && close.isVisible()) {
+                    close.click(new Locator.ClickOptions().setTimeout(1500).setForce(true));
+                    page.waitForTimeout(300);
+                    return;
+                }
+            } catch (Exception ignore) {
+                // 尝试下一个关闭按钮
+            }
+        }
+    }
+
+    private boolean clickRepositoryQaEntry(Page page) {
+        // 路径1：直接可见“仓库问答”
+        if (clickVisibleTextOption(page, "仓库问答")) {
+            return true;
+        }
+
+        // 路径2：先展开“切换人设”下拉，再点“仓库问答”
+        String[] personaTriggers = {
+            ".ant-dropdown-trigger:has-text('切换人设')",
+            "button:has-text('切换人设')",
+            "[role='button']:has-text('切换人设')",
+            "span:has-text('切换人设')"
+        };
+        for (String selector : personaTriggers) {
+            try {
+                Locator trigger = page.locator(selector).first();
+                if (trigger.count() > 0 && trigger.isVisible()) {
+                    trigger.click(new Locator.ClickOptions().setTimeout(3500).setForce(true));
+                    page.waitForTimeout(400);
+                    if (clickVisibleTextOption(page, "仓库问答")) {
+                        return true;
+                    }
+                }
+            } catch (Exception ignore) {
+                // 尝试下一个入口
+            }
+        }
+        return false;
+    }
+
+    private void clickRepositoryPickerEntry(Page page) {
+        String[] selectors = {
+            "button:has-text('选择仓库')",
+            "[role='button']:has-text('选择仓库')",
+            "span:has-text('选择仓库')",
+            "input[placeholder*='选择仓库']"
+        };
+        for (String selector : selectors) {
+            try {
+                Locator entry = page.locator(selector).first();
+                if (entry.count() > 0 && entry.isVisible()) {
+                    entry.click(new Locator.ClickOptions().setTimeout(2500).setForce(true));
+                    return;
+                }
+            } catch (Exception ignore) {
+                // 尝试下一个入口
+            }
         }
     }
     
@@ -571,11 +1268,10 @@ public class GiteeAiUtil {
             try {
                 com.microsoft.playwright.Locator wechatTextArea = page.locator("text=微信").first();
                 if (wechatTextArea.count() > 0 && wechatTextArea.isVisible()) {
-                    log.info("✅ [Gitee AI] 找到包含'微信'文字的区域");
                     // 尝试找到包含该文字的父容器
                     com.microsoft.playwright.Locator parentContainer = wechatTextArea.locator("..").first();
-                    if (parentContainer.count() > 0) {
-                        log.info("✅ [Gitee AI] 找到'微信'文字父容器");
+                    if (parentContainer.count() > 0 && locatorLooksLikeQrContainer(parentContainer)) {
+                        log.info("✅ [Gitee AI] 找到包含'微信'且含二维码元素的父容器");
                         return parentContainer;
                     }
                 }
@@ -596,7 +1292,8 @@ public class GiteeAiUtil {
                 
                 for (String selector : qrCodeSelectors) {
                     com.microsoft.playwright.Locator qrCodeLocator = page.locator(selector).first();
-                    if (qrCodeLocator.count() > 0 && qrCodeLocator.isVisible()) {
+                    if (qrCodeLocator.count() > 0 && qrCodeLocator.isVisible()
+                        && locatorLooksLikeQrContainer(qrCodeLocator)) {
                         log.info("✅ [Gitee AI] 找到二维码容器: {}", selector);
                         return qrCodeLocator;
                     }
@@ -1311,24 +2008,57 @@ public class GiteeAiUtil {
             page.navigate(GITEE_AI_HOME_URL, new Page.NavigateOptions().setTimeout(10000));
             return true;
         }
-        
+
+        // Gitee AI Chat 会话 URL：https://chat.gitee.com/c/{chatId}
+        final String chatUrl = GITEE_AI_HOME_URL + "c/" + chatId;
+        final String pathMarker = "/c/" + chatId;
+
         try {
-            log.info("[Gitee AI] 导航到会话: {}", chatId);
-            // Gitee AI Chat的实际会话URL格式：https://chat.gitee.com/c/{chatId}
-            String chatUrl = GITEE_AI_HOME_URL + "c/" + chatId;
-            page.navigate(chatUrl, new Page.NavigateOptions()
-                .setTimeout(15000)
-                .setWaitUntil(WaitUntilState.NETWORKIDLE));
-            
-            page.waitForLoadState(LoadState.DOMCONTENTLOADED);
-            page.waitForTimeout(2000);
-            
-            log.info("[Gitee AI] 成功导航到会话，等待页面稳定");
-            return true;
+            String current = page.url();
+            if (current != null && current.contains(pathMarker)) {
+                log.info("[Gitee AI] 已在目标会话页，跳过重复导航: {}", chatId);
+                page.waitForLoadState(LoadState.DOMCONTENTLOADED,
+                    new Page.WaitForLoadStateOptions().setTimeout(10000));
+                page.waitForTimeout(600);
+                return true;
+            }
         } catch (Exception e) {
-            log.error("[Gitee AI] 导航到会话失败: {}", e.getMessage());
-            return false;
+            log.debug("[Gitee AI] 检查当前会话 URL 时: {}", e.getMessage());
         }
+
+        // SPA 长连接/轮询会导致 NETWORKIDLE 长期无法满足，改用 DOM 就绪并带重试
+        final int maxAttempts = 3;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                log.info("[Gitee AI] 导航到会话: {} (第{}/{}次)", chatId, attempt, maxAttempts);
+                page.navigate(chatUrl, new Page.NavigateOptions()
+                    .setTimeout(30000)
+                    .setWaitUntil(WaitUntilState.DOMCONTENTLOADED));
+
+                page.waitForLoadState(LoadState.DOMCONTENTLOADED,
+                    new Page.WaitForLoadStateOptions().setTimeout(15000));
+                page.waitForTimeout(1500);
+
+                String after = page.url();
+                if (after != null && after.contains(pathMarker)) {
+                    log.info("[Gitee AI] 成功导航到会话，等待页面稳定");
+                    return true;
+                }
+                log.warn("[Gitee AI] 导航后 URL 未包含会话路径，将重试。当前: {}", after);
+            } catch (Exception e) {
+                log.warn("[Gitee AI] 导航到会话失败 (第{}/{}次): {}", attempt, maxAttempts, e.getMessage());
+                if (attempt == maxAttempts) {
+                    log.error("[Gitee AI] 导航到会话最终失败", e);
+                    return false;
+                }
+            }
+            try {
+                page.waitForTimeout(800L * attempt);
+            } catch (Exception ignored) {
+                // ignore
+            }
+        }
+        return false;
     }
 }
 

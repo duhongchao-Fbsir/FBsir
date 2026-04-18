@@ -375,6 +375,164 @@ public class FileDownloadUtil {
         return uploadViaDOM(page, localFilePath, null);
     }
 
+    /**
+     * 对话页「输入区」优先的文件上传（千问/文心/秘塔/豆包等共用）。
+     * <p>
+     * 避免 {@link #uploadViaDOM} 对 {@code input[type=file]} 使用 {@code first()} 时误命中头像等隐藏控件。
+     */
+    public boolean uploadComposerAreaFile(Page page, String localFilePath, String logPrefix) {
+        String prefix = (logPrefix != null && !logPrefix.isBlank()) ? logPrefix : "[对话上传]";
+        Path path = Paths.get(localFilePath);
+        if (!path.toFile().exists()) {
+            log.error("{} 文件不存在: {}", prefix, localFilePath);
+            return false;
+        }
+        log.info("{} 开始: {}", prefix, localFilePath);
+        try {
+            page.locator("textarea, div[contenteditable='true']").first().scrollIntoViewIfNeeded();
+            page.waitForTimeout(400);
+        } catch (Exception e) {
+            log.debug("{} 滚动输入区: {}", prefix, e.getMessage());
+        }
+
+        String[] scopedInputSelectors = {
+            "footer input[type='file']",
+            "[class*='composer'] input[type='file']",
+            "[class*='Composer'] input[type='file']",
+            "[class*='chat-input'] input[type='file']",
+            "[class*='ChatInput'] input[type='file']",
+            "[class*='input-area'] input[type='file']",
+            "[class*='footer'] input[type='file']",
+            "main input[type='file']"
+        };
+        for (String sel : scopedInputSelectors) {
+            try {
+                Locator loc = page.locator(sel);
+                int n = loc.count();
+                if (n <= 0) {
+                    continue;
+                }
+                for (int idx = n - 1; idx >= 0; idx--) {
+                    try {
+                        loc.nth(idx).setInputFiles(path);
+                        log.info("{} 已通过限定选择器 {} (索引 {}) 设置文件", prefix, sel, idx);
+                        page.waitForTimeout(1000);
+                        return true;
+                    } catch (Exception ex) {
+                        log.debug("{} {} 索引 {}: {}", prefix, sel, idx, ex.getMessage());
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("{} 选择器 {} 异常: {}", prefix, sel, e.getMessage());
+            }
+        }
+
+        try {
+            Locator all = page.locator("input[type='file']");
+            int cnt = all.count();
+            for (int idx = cnt - 1; idx >= 0; idx--) {
+                try {
+                    all.nth(idx).setInputFiles(path);
+                    log.info("{} 已通过全局 file input 索引 {} 设置文件", prefix, idx);
+                    page.waitForTimeout(1000);
+                    return true;
+                } catch (Exception ex) {
+                    log.debug("{} 全局索引 {} 失败: {}", prefix, idx, ex.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            log.debug("{} 遍历全局 file input 失败: {}", prefix, e.getMessage());
+        }
+
+        String[] menuItemSelectors = {
+            "li:has-text('本地上传')",
+            "div[role='menuitem']:has-text('本地上传')",
+            "button:has-text('本地上传')",
+            "div:has-text('本地上传')",
+            "span:has-text('本地上传')",
+            "li:has-text('上传本地文件')",
+            "div:has-text('上传本地文件')",
+            "button:has-text('本地文件')"
+        };
+        String[] menuOpeners = {
+            "[class*='composer'] [aria-label*='上传']",
+            "[class*='composer'] [aria-label*='附件']",
+            "[class*='composer'] [aria-label*='添加']",
+            "footer [aria-label*='上传']",
+            "footer [aria-label*='附件']",
+            "[class*='toolbar'] button[aria-label*='上传']",
+            "[class*='toolbar'] button[aria-label*='附件']"
+        };
+        for (String openerSel : menuOpeners) {
+            try {
+                Locator openerGroup = page.locator(openerSel);
+                if (openerGroup.count() == 0) {
+                    continue;
+                }
+                Locator opener = openerGroup.first();
+                if (!opener.isVisible(new Locator.IsVisibleOptions().setTimeout(900))) {
+                    continue;
+                }
+                opener.click(new Locator.ClickOptions().setTimeout(4000));
+                page.waitForTimeout(500);
+                for (String itemSel : menuItemSelectors) {
+                    try {
+                        Locator itemGroup = page.locator(itemSel);
+                        if (itemGroup.count() == 0) {
+                            continue;
+                        }
+                        Locator item = itemGroup.first();
+                        if (!item.isVisible(new Locator.IsVisibleOptions().setTimeout(1200))) {
+                            continue;
+                        }
+                        FileChooser chooser = page.waitForFileChooser(() ->
+                            item.click(new Locator.ClickOptions().setTimeout(5000)));
+                        chooser.setFiles(path);
+                        log.info("{} 菜单路径 {} -> {} 成功", prefix, openerSel, itemSel);
+                        page.waitForTimeout(1000);
+                        return true;
+                    } catch (Exception ignore) {
+                        // try next item
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("{} 打开菜单 {} 失败: {}", prefix, openerSel, e.getMessage());
+            }
+        }
+
+        String[] fileChooserTriggers = {
+            "button:has-text('上传文件')",
+            "[role='button']:has-text('上传文件')",
+            "button:has-text('本地上传')",
+            "div[role='button']:has-text('上传')",
+            "[aria-label*='上传文件']",
+            "[aria-label*='本地上传']"
+        };
+        for (String sel : fileChooserTriggers) {
+            try {
+                Locator btnGroup = page.locator(sel);
+                if (btnGroup.count() == 0) {
+                    continue;
+                }
+                Locator btn = btnGroup.first();
+                if (!btn.isVisible(new Locator.IsVisibleOptions().setTimeout(800))) {
+                    continue;
+                }
+                FileChooser chooser = page.waitForFileChooser(() ->
+                    btn.click(new Locator.ClickOptions().setTimeout(5000)));
+                chooser.setFiles(path);
+                log.info("{} 通过显式触发器 {} 成功", prefix, sel);
+                page.waitForTimeout(1000);
+                return true;
+            } catch (Exception e) {
+                log.debug("{} 触发器 {} 失败: {}", prefix, sel, e.getMessage());
+            }
+        }
+
+        log.warn("{} 所有策略均未成功", prefix);
+        return false;
+    }
+
     // =========================================================================
     // 核心方法2.5：多步骤复杂上传（适用于需要多次点击才能触发文件选择器的平台）
     // =========================================================================

@@ -9,7 +9,8 @@
     "dev": "vite",
     "build:prod": "vite build",
     "build:stage": "vite build --mode staging",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:aigc-mapper": "node scripts/verify-ai-capability-mapper.mjs"
   },
   "repository": {
     "type": "git",

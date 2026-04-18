@@ -1,0 +1,18 @@
+数据库增量脚本建议执行顺序（在导入基线 wxfbsir.sql 之后）
+================================================================
+
+说明：
+- 基线文件：wxfbsir.sql（首次建库）
+- 下列脚本按日期/依赖关系排序；新环境漏执行会导致运行期 Unknown column 等错误
+
+建议顺序：
+1. update_20260129_插入giteeAI助手.sql
+   - 为 wc_chat_history 等补充 gitee 相关字段/数据（与 AIGC Mapper 一致）
+2. update_20260316_为白名单表添加在线状态，主机类型，健康检查字段.sql
+   - Engine 注册/白名单能力所需列
+3. update_20260303_新建系统提示词表和Webhook地址表.sql（若使用输出物/Webhook 能力）
+4. update_20260321_输出物权限.sql（菜单与权限）
+5. 其余按业务需要执行（如 update_20260414_*）
+
+MySQL 版本：
+- AIGC 草稿列表等查询使用 ROW_NUMBER() 窗口函数，需 MySQL 8.0+，且开启 ONLY_FULL_GROUP_BY 时应使用已合并的聚合写法（见 AigcMapper.xml）。

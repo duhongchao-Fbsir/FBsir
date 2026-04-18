@@ -199,8 +199,9 @@ public class ClientMessageRouter {
                     }
                     
                     aigcService.saveInitialRequest(aiRequest);
-                    log.info("[AIGC路由] 🔥 预保存请求 - sessionId={}, aiType={}, userPrompt={}", 
-                        sessionId, aiType, userPrompt);
+                    String platformChatId = extractPlatformChatId(payload, aiType);
+                    log.info("[AIGC路由] stage=preSave requestType={} requestId={} sessionId={} chatId={} aiType={} engineId={} platformChatId={}",
+                        type, requestId, sessionId, chatId, aiType, engineId, platformChatId);
                 } catch (Exception e) {
                     log.warn("[AIGC路由] 预保存失败，继续透传: {}", e.getMessage());
                 }
@@ -338,5 +339,31 @@ public class ClientMessageRouter {
             return clientId.substring(5);
         }
         return clientId;
+    }
+
+    private String extractPlatformChatId(JSONObject payload, String aiType) {
+        if (payload == null) {
+            return null;
+        }
+        String lower = aiType == null ? "" : aiType.toLowerCase();
+        switch (lower) {
+            case "deepseek":
+                return payload.getString("deepseekChatId");
+            case "gitee":
+                return payload.getString("giteeChatId");
+            case "doubao":
+                return payload.getString("dbChatId");
+            case "qianwen":
+            case "tongyi":
+                return payload.getString("toneChatId");
+            case "yuanbao":
+                return payload.getString("ybChatId");
+            case "wenxin":
+                return payload.getString("baiduChatId");
+            case "mita":
+                return payload.getString("metasoChatId");
+            default:
+                return payload.getString("chatId");
+        }
     }
 }

@@ -79,9 +79,49 @@ public class CapabilityRegistry {
         // 扫描所有@Controller中的@StreamCapability和@OnceCapability注解
         // 无需手动配置，系统自动发现和注册
         autoRegisterFromAnnotations();
+
+        registerLegacyCapabilityAliases();
         
         // ━━━━━━━━━━━━━━━━ 输出注册结果 ━━━━━━━━━━━━━━━━
         log.info("[CapabilityRegistry] 已注册 {} 个消息处理器", handlers.size());
+    }
+
+    /**
+     * 历史别名：旧文档/列表曾使用 AI_*_CHECK_LOGIN，与注解真源（DEEPSEEK_CHECK_LOGIN 等）并存兼容
+     */
+    private void registerLegacyCapabilityAliases() {
+        registerAliasIfMissing("AI_DEEPSEEK_CHECK_LOGIN", "DEEPSEEK_CHECK_LOGIN");
+        registerAliasIfMissing("AI_DEEPSEEK_SCAN_LOGIN", "DEEPSEEK_SCAN_LOGIN");
+        registerAliasIfMissing("AI_GITEE_CHECK_LOGIN", "GITEE_CHECK_LOGIN");
+        registerAliasIfMissing("AI_GITEE_SCAN_LOGIN", "GITEE_SCAN_LOGIN");
+        registerAliasIfMissing("AI_DOUBAO_CHECK_LOGIN", "DOUBAO_CHECK_LOGIN");
+        registerAliasIfMissing("AI_DOUBAO_SCAN_LOGIN", "DOUBAO_SCAN_LOGIN");
+        registerAliasIfMissing("AI_QIANWEN_CHECK_LOGIN", "QIANWEN_CHECK_LOGIN");
+        registerAliasIfMissing("AI_QIANWEN_SCAN_LOGIN", "QIANWEN_SCAN_LOGIN");
+        registerAliasIfMissing("AI_YUANBAO_CHECK_LOGIN", "YUANBAO_CHECK_LOGIN");
+        registerAliasIfMissing("AI_YUANBAO_SCAN_LOGIN", "YUANBAO_SCAN_LOGIN");
+        registerAliasIfMissing("AI_WENXIN_CHECK_LOGIN", "WENXIN_CHECK_LOGIN");
+        registerAliasIfMissing("AI_WENXIN_SCAN_LOGIN", "WENXIN_SCAN_LOGIN");
+        registerAliasIfMissing("AI_MITA_CHECK_LOGIN", "MITA_CHECK_LOGIN");
+        registerAliasIfMissing("AI_MITA_SCAN_LOGIN", "MITA_SCAN_LOGIN");
+    }
+
+    private void registerAliasIfMissing(String aliasType, String primaryType) {
+        if (handlers.containsKey(aliasType)) {
+            return;
+        }
+        MessageHandler primary = handlers.get(primaryType);
+        if (primary == null) {
+            log.warn("[CapabilityRegistry] 别名注册跳过：主能力未注册 alias={} primary={}", aliasType, primaryType);
+            return;
+        }
+        handlers.put(aliasType, new MessageHandler(
+            aliasType,
+            primary.description() + " [alias:" + primaryType + "]",
+            primary::handle,
+            primary.streaming()
+        ));
+        log.info("[CapabilityRegistry] 已注册能力别名 {} -> {}", aliasType, primaryType);
     }
     
     /**

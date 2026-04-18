@@ -103,8 +103,23 @@ public class SysLoginService
             }
             else
             {
-                AsyncManager.me().execute(AsyncFactory.recordLogininfor(username, Constants.LOGIN_FAIL, e.getMessage()));
-                throw new ServiceException(e.getMessage());
+                String raw = e.getMessage();
+                String friendly = raw;
+                if (raw != null)
+                {
+                    if (raw.contains("Communications link failure") || raw.contains("Could not open JDBC")
+                        || raw.contains("CommunicationsException"))
+                    {
+                        friendly = "数据库连接失败，请确认 MySQL 已启动且账号配置正确";
+                    }
+                    else if (raw.contains("Redis") || raw.contains("Unable to connect to Redis")
+                        || raw.contains("RedisConnectionFailure"))
+                    {
+                        friendly = "Redis 连接失败，请确认 Redis 已启动且配置正确";
+                    }
+                }
+                AsyncManager.me().execute(AsyncFactory.recordLogininfor(username, Constants.LOGIN_FAIL, raw != null ? raw : "error"));
+                throw new ServiceException(friendly);
             }
         }
         finally
@@ -113,7 +128,14 @@ public class SysLoginService
         }
         AsyncManager.me().execute(AsyncFactory.recordLogininfor(username, Constants.LOGIN_SUCCESS, MessageUtils.message("user.login.success")));
         LoginUser loginUser = (LoginUser) authentication.getPrincipal();
-        recordLoginInfo(loginUser.getUserId());
+        try
+        {
+            recordLoginInfo(loginUser.getUserId());
+        }
+        catch (Exception ex)
+        {
+            log.warn("更新登录时间/地点失败（不影响本次登录发牌） userId={}: {}", loginUser.getUserId(), ex.getMessage());
+        }
         // 首次登录奖励（判断是否已领取），失败不影响登录
         try
         {
@@ -149,8 +171,16 @@ public class SysLoginService
         {
             log.warn("Daily login points grant error for user {}", loginUser.getUserId(), ex);
         }
-        // 生成token
-        return tokenService.createToken(loginUser);
+        // 生成 token（会话缓存依赖 Redis）
+        try
+        {
+            return tokenService.createToken(loginUser);
+        }
+        catch (Exception e)
+        {
+            log.error("创建登录令牌失败（常见原因：Redis 不可用）: {}", e.getMessage());
+            throw new ServiceException("登录会话建立失败，请确认 Redis 已启动且应用可连接（若已启动仍失败，请查看后台日志）");
+        }
     }
 
     /**
@@ -167,13 +197,29 @@ public class SysLoginService
         if (captchaEnabled)
         {
             String verifyKey = CacheConstants.CAPTCHA_CODE_KEY + StringUtils.nvl(uuid, "");
-            String captcha = redisCache.getCacheObject(verifyKey);
+            String captcha;
+            try
+            {
+                captcha = redisCache.getCacheObject(verifyKey);
+            }
+            catch (Exception e)
+            {
+                log.error("读取验证码失败（请检查 Redis）: {}", e.getMessage());
+                throw new ServiceException("验证码服务不可用，请确认 Redis 已启动且应用可连接");
+            }
             if (captcha == null)
             {
                 AsyncManager.me().execute(AsyncFactory.recordLogininfor(username, Constants.LOGIN_FAIL, MessageUtils.message("user.jcaptcha.expire")));
                 throw new CaptchaExpireException();
             }
-            redisCache.deleteObject(verifyKey);
+            try
+            {
+                redisCache.deleteObject(verifyKey);
+            }
+            catch (Exception e)
+            {
+                log.warn("删除验证码缓存失败（忽略）: {}", e.getMessage());
+            }
             if (!code.equalsIgnoreCase(captcha))
             {
                 AsyncManager.me().execute(AsyncFactory.recordLogininfor(username, Constants.LOGIN_FAIL, MessageUtils.message("user.jcaptcha.error")));

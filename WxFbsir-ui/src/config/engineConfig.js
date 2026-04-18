@@ -89,6 +89,20 @@ export const ENGINE_CONFIGS = reactive([
         defaultValue: false,
         exclusive: ['enableWebSearch'],
         disabled: false
+      },
+      {
+        id: 'enableFastMode',
+        label: '快速模式',
+        defaultValue: false,
+        exclusive: ['enableExpertMode'],
+        disabled: false
+      },
+      {
+        id: 'enableExpertMode',
+        label: '专家模式',
+        defaultValue: false,
+        exclusive: ['enableFastMode'],
+        disabled: false
       }
     ],
 
@@ -97,6 +111,226 @@ export const ENGINE_CONFIGS = reactive([
 
     // 排序权重（数字越小越靠前）
     order: 1
+  },
+
+  // =========================================================================
+  // 豆包（Doubao）配置（AI服务）
+  // =========================================================================
+  {
+    id: 'doubao',
+    displayName: '豆包',
+    description: '字节豆包网页版对话（需在登录管理器中完成账号登录）',
+    type: SERVICE_TYPE.AI,
+
+    icon: {
+      type: 'url',
+      value: 'https://lf-flow-web-cdn.doubao.com/obj/flow-doubao/doubao/chat/logo-icon2.png'
+    },
+
+    messageTypes: {
+      checkLogin: 'DOUBAO_CHECK_LOGIN',
+      scanLogin: 'DOUBAO_SCAN_LOGIN',
+      query: 'AI_DOUBAO_QUERY'
+    },
+
+    enabled: true,
+    loggedIn: false,
+    requireLogin: true,
+
+    options: [
+      {
+        id: 'enableDeepThinking',
+        label: '思考',
+        defaultValue: false,
+        exclusive: [],
+        disabled: false
+      },
+      {
+        id: 'enableFastMode',
+        label: '快速',
+        defaultValue: false,
+        exclusive: ['enableExpertMode'],
+        disabled: false
+      },
+      {
+        id: 'enableExpertMode',
+        label: '专家',
+        defaultValue: false,
+        exclusive: ['enableFastMode'],
+        disabled: false
+      },
+      {
+        id: 'enableFileUpload',
+        label: '上传文件',
+        defaultValue: false,
+        exclusive: [],
+        disabled: false
+      }
+    ],
+
+    // 与 index.vue 中 userInfoReq.dbChatId、库表 db_chat_id 一致
+    chatIdField: 'dbChatId',
+
+    order: 2
+  },
+
+  // =========================================================================
+  // 千问（Qianwen）配置（AI服务）
+  // =========================================================================
+  {
+    id: 'qianwen',
+    displayName: '千问',
+    description: '阿里千问网页版对话（需在登录管理器中完成账号登录）',
+    type: SERVICE_TYPE.AI,
+
+    icon: {
+      type: 'url',
+      value: 'https://img.alicdn.com/imgextra/i4/O1CN01uar8u91DHWktnF2fl_!!6000000000191-2-tps-110-110.png'
+    },
+
+    messageTypes: {
+      checkLogin: 'QIANWEN_CHECK_LOGIN',
+      scanLogin: 'QIANWEN_SCAN_LOGIN',
+      query: 'AI_QIANWEN_QUERY'
+    },
+
+    enabled: true,
+    loggedIn: false,
+    requireLogin: true,
+
+    options: [
+      {
+        id: 'enableFileUpload',
+        label: '上传文件',
+        defaultValue: false,
+        exclusive: [],
+        disabled: false
+      }
+    ],
+
+    // 与 index.vue 中 userInfoReq.toneChatId、库表 tone_chat_id 一致
+    chatIdField: 'toneChatId',
+
+    order: 3
+  },
+
+  // =========================================================================
+  // 腾讯元宝（Yuanbao）配置（AI服务）
+  // =========================================================================
+  {
+    id: 'yuanbao',
+    displayName: '腾讯元宝',
+    description: '腾讯元宝网页版对话（需在登录管理器中完成账号登录）',
+    type: SERVICE_TYPE.AI,
+
+    icon: {
+      type: 'element',
+      value: 'Connection'
+    },
+
+    messageTypes: {
+      checkLogin: 'YUANBAO_CHECK_LOGIN',
+      scanLogin: 'YUANBAO_SCAN_LOGIN',
+      query: 'AI_YUANBAO_QUERY'
+    },
+
+    enabled: true,
+    loggedIn: false,
+    requireLogin: true,
+
+    options: [
+      {
+        id: 'enableFileUpload',
+        label: '上传文件',
+        defaultValue: false,
+        exclusive: [],
+        disabled: false
+      }
+    ],
+
+    // 与 index.vue 中 userInfoReq.ybChatId、库表 yb_chat_id 一致
+    chatIdField: 'ybChatId',
+
+    order: 4
+  },
+
+  // =========================================================================
+  // 文心一言（百度）配置（AI服务）
+  // =========================================================================
+  {
+    id: 'wenxin',
+    displayName: '文心一言',
+    description: '百度文心一言网页版对话（会话存 baidu_chat_id）',
+    type: SERVICE_TYPE.AI,
+
+    icon: {
+      type: 'element',
+      value: 'ChatDotRound'
+    },
+
+    messageTypes: {
+      checkLogin: 'WENXIN_CHECK_LOGIN',
+      scanLogin: 'WENXIN_SCAN_LOGIN',
+      query: 'AI_WENXIN_QUERY'
+    },
+
+    enabled: true,
+    loggedIn: false,
+    requireLogin: true,
+
+    options: [
+      {
+        id: 'enableFileUpload',
+        label: '上传文件',
+        defaultValue: false,
+        exclusive: [],
+        disabled: false
+      }
+    ],
+
+    // 与 index.vue userInfoReq.baiduChatId、库表 baidu_chat_id 一致
+    chatIdField: 'baiduChatId',
+
+    order: 5
+  },
+
+  // =========================================================================
+  // 秘塔 AI（Metaso）配置（AI服务）
+  // =========================================================================
+  {
+    id: 'mita',
+    displayName: '秘塔',
+    description: '秘塔 AI 搜索网页版（会话存 metaso_chat_id）',
+    type: SERVICE_TYPE.AI,
+
+    icon: {
+      type: 'url',
+      value: 'https://metaso.cn/favicon.ico'
+    },
+
+    messageTypes: {
+      checkLogin: 'MITA_CHECK_LOGIN',
+      scanLogin: 'MITA_SCAN_LOGIN',
+      query: 'AI_MITA_QUERY'
+    },
+
+    enabled: true,
+    loggedIn: false,
+    requireLogin: true,
+
+    options: [
+      {
+        id: 'enableFileUpload',
+        label: '上传文件',
+        defaultValue: false,
+        exclusive: [],
+        disabled: false
+      }
+    ],
+
+    chatIdField: 'metasoChatId',
+
+    order: 6
   },
 
   // =========================================================================
@@ -132,29 +366,41 @@ export const ENGINE_CONFIGS = reactive([
         id: 'openSourceExploration',
         label: '开源探索',
         defaultValue: false,
-        exclusive: [],
+        exclusive: ['repositoryQA', 'helpCenter'],
+        disabled: false
+      },
+      {
+        id: 'repositoryQA',
+        label: '仓库问答',
+        defaultValue: false,
+        exclusive: ['openSourceExploration', 'helpCenter'],
         disabled: false
       },
       {
         id: 'helpCenter',
         label: '帮助中心',
         defaultValue: false,
+        exclusive: ['openSourceExploration', 'repositoryQA'],
+        disabled: false
+      },
+      {
+        id: 'enableFileUpload',
+        label: '上传文件',
+        defaultValue: false,
         exclusive: [],
         disabled: false
       }
-      // {
-      //   id: 'enableFileUpload',
-      //   label: '上传文件',
-      //   defaultValue: false,
-      //   exclusive: ['enableWebSearch'],
-      //   disabled: false
-      // }
+    ],
+
+    // 仓库问答的仓库列表（由Engine动态探测DOM后回传）
+    repositoryChoices: [
+      { label: '页面默认仓库', value: '' }
     ],
 
     // AI会话ID字段名（AI服务特有）
     chatIdField: 'giteeChatId',
     // 排序权重（数字越小越靠前）
-    order: 2
+    order: 7
   },
 
   // =========================================================================
@@ -187,7 +433,7 @@ export const ENGINE_CONFIGS = reactive([
     options: [],
 
     // 排序权重（数字越小越靠前）
-    order: 3
+    order: 8
   }
 
   // =========================================================================
@@ -387,6 +633,32 @@ export function initServiceOptionsState(serviceId) {
   return state
 }
 
+/** Gitee：开源探索 / 仓库问答 / 帮助中心 三选一（与 options.exclusive 配置一致） */
+export const GITEE_MODE_OPTION_IDS = ['openSourceExploration', 'repositoryQA', 'helpCenter']
+
+/**
+ * Gitee 模式互斥切换：模式项三选一；非模式项（如 enableFileUpload）走独立开关
+ * @returns {{ newState: Record<string, boolean>, needRequestRepositoryChoices: boolean }}
+ */
+export function applyGiteeOptionsToggle(optionId, newValue, currentState) {
+  const newState = { ...currentState }
+  if (GITEE_MODE_OPTION_IDS.includes(optionId)) {
+    if (newValue) {
+      GITEE_MODE_OPTION_IDS.forEach(key => {
+        newState[key] = key === optionId
+      })
+      return {
+        newState,
+        needRequestRepositoryChoices: optionId === 'repositoryQA'
+      }
+    }
+    newState[optionId] = false
+    return { newState, needRequestRepositoryChoices: false }
+  }
+  newState[optionId] = newValue
+  return { newState, needRequestRepositoryChoices: false }
+}
+
 /**
  * 处理互斥选项切换
  */
@@ -417,6 +689,16 @@ export function updateServiceLoginStatus(serviceId, isLoggedIn) {
   if (config) {
     config.loggedIn = isLoggedIn
   }
+}
+
+/**
+ * 动态更新服务可选项（如 Gitee 仓库问答二级菜单）
+ */
+export function updateServiceDynamicChoices(serviceId, fieldName, choices) {
+  const config = getEngineConfig(serviceId)
+  if (!config) return
+  if (!Array.isArray(choices)) return
+  config[fieldName] = choices
 }
 
 /**

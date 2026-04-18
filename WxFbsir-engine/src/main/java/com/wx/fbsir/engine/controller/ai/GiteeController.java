@@ -2,6 +2,7 @@ package com.wx.fbsir.engine.controller.ai;
 
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.LoadState;
+import com.wx.fbsir.engine.capability.CapabilityNormalizer;
 import com.wx.fbsir.engine.capability.annotation.OnceCapability;
 import com.wx.fbsir.engine.capability.annotation.StreamCapability;
 import com.wx.fbsir.engine.capability.base.StreamTaskHelper;
@@ -9,12 +10,12 @@ import com.wx.fbsir.engine.playwright.pool.BrowserPoolManager;
 import com.wx.fbsir.engine.playwright.session.BrowserSession;
 import com.wx.fbsir.engine.playwright.util.ScreenshotUtil;
 import com.wx.fbsir.engine.utils.ai.GiteeAiUtil;
+import com.wx.fbsir.engine.utils.common.FileDownloadUtil;
 import com.wx.fbsir.engine.websocket.message.EngineMessage;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Controller;
 
-import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -80,6 +81,9 @@ public class GiteeController extends StreamTaskHelper {
     @Autowired
     private com.wx.fbsir.engine.playwright.util.ScreenshotUploadClient uploadClient;
 
+    @Autowired
+    private FileDownloadUtil fileDownloadUtil;
+
     /**
      * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      * 功能1：检查 Gitee AI Chat 登录状态（单次返回）
@@ -136,6 +140,16 @@ public class GiteeController extends StreamTaskHelper {
                 resultData.put("isLoggedIn", isLoggedIn);
                 resultData.put("userName", isLoggedIn ? loginStatus : null);
                 resultData.put("platform", "Gitee AI Chat");
+                if (isLoggedIn) {
+                    try {
+                        java.util.List<String> repositoryChoices =
+                            giteeAiUtil.detectRepositoryChoices(session.getOrCreatePage());
+                        resultData.put("repositoryChoices", repositoryChoices);
+                        log.info("[Gitee登录检测] 仓库列表探测结果: {}", repositoryChoices);
+                    } catch (Exception e) {
+                        log.warn("[Gitee登录检测] 获取仓库问答子模式失败: {}", e.getMessage());
+                    }
+                }
                 resultData.put("timestamp", System.currentTimeMillis());
                 
                 log.info("✅ [Gitee登录检测] 完成 - 登录状态: {}, 用户: {}", isLoggedIn, loginStatus);
@@ -382,20 +396,19 @@ public class GiteeController extends StreamTaskHelper {
         //     giteeChatId = payload.getString("chatId");  // 兼容前端传递的chatId参数
         // }
         
-        // 提取模式参数
-        boolean enableOpenSourceExploration = payload.getBooleanValue("openSourceExploration", false);
-        boolean enableHelpCenter = payload.getBooleanValue("helpCenter", false);
+        // 统一能力规约（兼容扁平字段 + 规范化字段）
+        CapabilityNormalizer.NormalizedCapabilities normalized = CapabilityNormalizer.normalize(aiType, payload);
+        boolean enableOpenSourceExploration = normalized.isOpenSourceExploration();
+        boolean enableRepositoryQA = normalized.isRepositoryQa();
+        boolean enableHelpCenter = normalized.isHelpCenter();
+        boolean enableFileUpload = normalized.isFileUploadEnabled();
+        String uploadedFileUrl = normalized.getFileUploadUrl();
+        String repositoryName = normalized.getRepositoryName();
         
-        log.info("[Gitee咨询] ✅ 解析参数 - query: {}, openSourceExploration: {}, helpCenter: {}, 前端chatId: {}, giteeChatId: {}", 
-            query, enableOpenSourceExploration, enableHelpCenter, chatId, giteeChatId);
+        log.info("[Gitee咨询] ✅ 解析参数 - query: {}, openSourceExploration: {}, repositoryQA: {}, helpCenter: {}, enableFileUpload: {}, repositoryName: {}, 前端chatId: {}, giteeChatId: {}", 
+            query, enableOpenSourceExploration, enableRepositoryQA, enableHelpCenter, enableFileUpload, repositoryName, chatId, giteeChatId);
         
-        // 确定使用的模式
-        String mode = "normal";
-        if (enableOpenSourceExploration) {
-            mode = "openSourceExploration";
-        } else if (enableHelpCenter) {
-            mode = "helpCenter";
-        }
+        String mode = normalized.getGiteeMode();
         
         log.info("[Gitee咨询] 开始 - 用户: {}, sessionId: {}, 模式: {}, 前端chatId: {}, giteeChatId: {}", 
             userId, sessionId, mode, chatId, giteeChatId != null ? giteeChatId : "新会话");
@@ -407,17 +420,22 @@ public class GiteeController extends StreamTaskHelper {
         long startTime = System.currentTimeMillis();
         
         try {
+            if (!normalized.getUnsupportedOptionIds().isEmpty()) {
+                task.sendLog("检测到不支持能力，已自动忽略: " + String.join(", ", normalized.getUnsupportedOptionIds()));
+            }
             task.sendLog("正在连接 Gitee AI Chat...");
             
             // 获取持久化浏览器会话
             session = browserPool.acquirePersistent(userId, "gitee", false);
             
+            boolean restoredLoginState = false;
             // 🔥 关键：使用通用框架恢复登录状态（解决Gitee跨域Cookie问题）
             if (com.wx.fbsir.engine.playwright.login.manager.LoginStateManager.hasLoginState("gitee", userId)) {
                 try {
                     boolean restored = com.wx.fbsir.engine.playwright.login.manager.LoginStateManager
                         .restoreLoginState(session, "gitee", userId);
                     if (restored) {
+                        restoredLoginState = true;
                         log.info("[Gitee AI咨询] ✅ 登录状态已恢复 - 用户: {}", userId);
                     } else {
                         log.warn("[Gitee AI咨询] ⚠️ 登录状态恢复失败 - 用户: {}", userId);
@@ -442,22 +460,86 @@ public class GiteeController extends StreamTaskHelper {
                 // 在会话页面检查登录状态
                 task.sendLog("正在检查登录状态...");
                 String loginStatus = giteeAiUtil.checkLoginStatus(page, false);
+                if ("false".equals(loginStatus) && restoredLoginState) {
+                    task.sendLog("检测到已恢复登录态，正在刷新页面后重试登录检测...");
+                    page.reload(new Page.ReloadOptions().setWaitUntil(com.microsoft.playwright.options.WaitUntilState.DOMCONTENTLOADED).setTimeout(30000));
+                    page.waitForTimeout(1000);
+                    loginStatus = giteeAiUtil.checkLoginStatus(page, false);
+                }
                 if ("false".equals(loginStatus)) {
-                    task.sendError("未登录，请先完成扫码登录");
-                    return;
+                    task.sendLog("登录检测可能误判，继续尝试发送问题...");
+                    log.warn("[Gitee咨询] 登录检测返回未登录，进入发送阶段再做最终判定 - 用户: {}", userId);
                 }
             } else {
                 log.info("[Gitee咨询] 未提供 giteeChatId，将创建新Gitee会话");
                 // 访问首页并检查登录状态
                 task.sendLog("正在检查登录状态...");
                 String loginStatus = giteeAiUtil.checkLoginStatus(page, true);
+                if ("false".equals(loginStatus) && restoredLoginState) {
+                    task.sendLog("检测到已恢复登录态，正在刷新页面后重试登录检测...");
+                    page.reload(new Page.ReloadOptions().setWaitUntil(com.microsoft.playwright.options.WaitUntilState.DOMCONTENTLOADED).setTimeout(30000));
+                    page.waitForTimeout(1000);
+                    loginStatus = giteeAiUtil.checkLoginStatus(page, false);
+                }
                 if ("false".equals(loginStatus)) {
-                    task.sendError("未登录，请先完成扫码登录");
-                    return;
+                    task.sendLog("登录检测可能误判，继续尝试发送问题...");
+                    log.warn("[Gitee咨询] 登录检测返回未登录，进入发送阶段再做最终判定 - 用户: {}", userId);
                 }
             }
             
             task.sendLog("登录验证通过，准备发送问题...");
+
+            // 模式切换优先于文件上传，避免上传后切模式导致附件上下文丢失
+            GiteeAiUtil.ModeApplyResult modeApplyResult = null;
+            if (enableOpenSourceExploration || enableRepositoryQA || enableHelpCenter) {
+                task.sendLog("正在切换对话模式...");
+                modeApplyResult = giteeAiUtil.applyConversationMode(
+                    page,
+                    enableOpenSourceExploration,
+                    enableRepositoryQA,
+                    enableHelpCenter,
+                    repositoryName
+                );
+                if (enableRepositoryQA && modeApplyResult != null) {
+                    if (modeApplyResult.getRepositoryChoices() != null
+                        && !modeApplyResult.getRepositoryChoices().isEmpty()) {
+                        String choicesLog = String.join(" | ", modeApplyResult.getRepositoryChoices());
+                        task.sendLog("仓库问答DOM仓库列表: " + choicesLog);
+                    }
+                    if (modeApplyResult.getSelectedRepository() != null
+                        && !modeApplyResult.getSelectedRepository().isEmpty()) {
+                        task.sendLog("仓库问答最终选中仓库: " + modeApplyResult.getSelectedRepository());
+                    } else {
+                        task.sendLog("仓库问答最终选中仓库: 页面默认仓库");
+                    }
+                }
+            }
+
+            // 若切模式过程触发了页面跳转（如回到首页），则恢复到原会话，保证上下文与附件一致
+            if (giteeChatId != null && !giteeChatId.isEmpty()) {
+                task.sendLog("正在恢复Gitee会话: " + giteeChatId);
+                boolean modeNavigated = giteeAiUtil.navigateToChat(page, giteeChatId);
+                if (!modeNavigated) {
+                    task.sendError("模式切换后恢复Gitee会话失败: " + giteeChatId);
+                    return;
+                }
+            }
+
+            // 处理文件上传（可选）
+            if (enableFileUpload && uploadedFileUrl != null && !uploadedFileUrl.isEmpty()) {
+                task.sendLog("检测到文件上传请求，正在处理...");
+                FileDownloadUtil.UploadResult fileResult = fileDownloadUtil.downloadAndUploadToPage(
+                    uploadedFileUrl,
+                    page,
+                    (p, filePath) -> giteeAiUtil.uploadFile(p, filePath)
+                );
+
+                if (fileResult.isSuccess()) {
+                    task.sendLog("文件已成功上传到 Gitee AI");
+                } else {
+                    task.sendLog("文件处理失败(" + fileResult.getErrorMessage() + ")，将继续发送文本消息");
+                }
+            }
             
             // 🔥 启动定时截图和日志推送（参考DeepSeek实现）
             task.startAutoProgress(count -> {
@@ -484,7 +566,7 @@ public class GiteeController extends StreamTaskHelper {
             // 发送问题并等待回复
             task.sendLog("正在向 Gitee AI 发送问题...");
             task.sendLog("当前模式: " + mode);
-            String aiResponse = giteeAiUtil.sendMessageAndWaitResponse(page, query, enableOpenSourceExploration, enableHelpCenter);
+            String aiResponse = giteeAiUtil.sendMessageAndWaitResponse(page, query);
             
             if (aiResponse == null || aiResponse.isEmpty()) {
                 task.sendError("AI 未返回有效回复");
@@ -520,6 +602,19 @@ public class GiteeController extends StreamTaskHelper {
             resultData.put("shareUrl", shareUrl);  // 分享链接
             resultData.put("mode", mode);  // 添加使用的模式
             resultData.put("elapsedTime", elapsedTime);
+            if (modeApplyResult != null && "仓库问答".equals(modeApplyResult.getModeName())) {
+                resultData.put("selectedRepository", modeApplyResult.getSelectedRepository());
+                if (modeApplyResult.getRepositoryChoices() != null && !modeApplyResult.getRepositoryChoices().isEmpty()) {
+                    resultData.put("repositoryChoices", modeApplyResult.getRepositoryChoices());
+                }
+            }
+            try {
+                if (!resultData.containsKey("repositoryChoices")) {
+                    resultData.put("repositoryChoices", giteeAiUtil.detectRepositoryChoices(page));
+                }
+            } catch (Exception e) {
+                log.warn("[Gitee咨询] 获取仓库问答子模式失败: {}", e.getMessage());
+            }
             
             // 🔥 数据存储策略（优化版）：
             // - answer字段：存储AI回复内容

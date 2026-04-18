@@ -130,6 +130,28 @@ const loginStatusText = ref('')
 const qrCodeUrl = ref('')
 const currentServiceId = ref('')
 
+/** Engine TASK_RESULT：从 payload 推断服务 ID（兼容 aiType / platform / 请求类型） */
+function resolveServiceIdFromCheckLoginPayload(payload, messageType) {
+  if (!payload || typeof payload !== 'object') return null
+  const raw = payload.aiType ?? payload.ai_type
+  if (raw != null && raw !== '') {
+    const id = String(raw).trim().toLowerCase()
+    const byId = ENGINE_CONFIGS.find(c => c.id === id || c.id === String(raw).trim())
+    if (byId) return byId.id
+  }
+  const platform = (payload.data && (payload.data.platform ?? payload.data.Platform)) || payload.platform
+  if (platform != null) {
+    const p = String(platform).toLowerCase()
+    if (p.includes('wenxin') || p.includes('文心')) return 'wenxin'
+    if (p.includes('mita') || p.includes('秘塔') || p.includes('metaso')) return 'mita'
+  }
+  if (messageType && String(messageType).includes('CHECK_LOGIN')) {
+    const byMsg = ENGINE_CONFIGS.find(c => c.messageTypes?.checkLogin === messageType)
+    if (byMsg) return byMsg.id
+  }
+  return null
+}
+
 // WebSocket连接
 let websocket = null
 
@@ -201,7 +223,14 @@ const handleWebSocketMessage = (message) => {
   
   // 🔥 兼容多种消息格式
   const messageType = message.messageType || message.type
-  const payload = message.payload || message
+  let payload = message.payload != null ? message.payload : message
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload)
+    } catch (e) {
+      payload = message
+    }
+  }
   const metadata = message.metadata || {}
   
   console.log('📨 [登录管理器] 解析后 - messageType:', messageType, 'payload:', payload, 'metadata:', metadata)
@@ -253,10 +282,13 @@ const handleWebSocketMessage = (message) => {
       if (serviceId) matchMethod = 'metadata.requestType'
     }
     
-    // 方式2: 通过 payload.aiType 匹配（AI服务）
-    if (!serviceId && payload.aiType) {
-      serviceId = ENGINE_CONFIGS.find(config => config.id === payload.aiType)?.id
-      if (serviceId) matchMethod = 'payload.aiType'
+    // 方式2: 通过 payload.aiType / platform 等匹配（AI服务）
+    if (!serviceId) {
+      const resolved = resolveServiceIdFromCheckLoginPayload(payload, messageType)
+      if (resolved) {
+        serviceId = resolved
+        matchMethod = 'payload.aiType/platform'
+      }
     }
     
     // 方式3: 通过 messageType 直接匹配（旧格式）
@@ -267,7 +299,7 @@ const handleWebSocketMessage = (message) => {
       if (serviceId) matchMethod = 'messageType'
     }
     
-    // 方式4: 查找当前正在检测的服务
+    // 方式4: 仅当「只有一个」正在检测的服务时兜底（多路并行时不可靠）
     if (!serviceId) {
       const checkingServiceIds = Object.keys(checkingServices.value).filter(
         id => checkingServices.value[id] === true
@@ -278,28 +310,30 @@ const handleWebSocketMessage = (message) => {
       }
     }
     
-    // 🎯 处理登录检测结果
-    if (serviceId && checkingServices.value[serviceId]) {
+    const isCheckLoginResult = payload?.data != null && typeof payload.data.isLoggedIn === 'boolean'
+    const shouldApplyCheckLogin =
+      serviceId &&
+      (checkingServices.value[serviceId] || isCheckLoginResult)
+    
+    // 🎯 处理登录检测结果（含 isLoggedIn 时不再强依赖 checkingServices，避免永远「检测中」）
+    if (shouldApplyCheckLogin) {
       const isLoggedIn = payload?.data?.isLoggedIn || payload?.loggedIn || false
       const userName = payload?.data?.userName || payload?.userName || ''
       const config = getEngineConfig(serviceId)
       
       console.log('✅ [登录管理器] 登录检测结果 - 服务:', config?.displayName, '匹配方式:', matchMethod, '已登录:', isLoggedIn, '用户:', userName)
       
-      // 更新状态
       checkingServices.value[serviceId] = false
       updateServiceLoginStatus(serviceId, isLoggedIn)
       saveLoginStatusToStorage()
       
-      // 更新最后检测时间
       const service = ENGINE_CONFIGS.find(s => s.id === serviceId)
       if (service) {
         service.lastCheckTime = new Date().toLocaleString()
       }
       
-      // 显示结果
       ElMessage.success(`${config?.displayName} 登录状态: ${isLoggedIn ? '已登录' + (userName ? ' (' + userName + ')' : '') : '未登录'}`)
-      return // ✅ 处理完成，直接返回
+      return
     }
     
     // 如果不是登录检测结果，继续处理扫码登录逻辑
@@ -339,7 +373,15 @@ const handleWebSocketMessage = (message) => {
     loginStatusText.value = errorMsg
     loginDialogVisible.value = false
     qrCodeUrl.value = ''
-    ElMessage.error(`${currentServiceName.value} 登录失败: ${errorMsg}`)
+    const errSid = resolveServiceIdFromCheckLoginPayload(payload, messageType)
+    if (errSid) {
+      checkingServices.value[errSid] = false
+    } else {
+      Object.keys(checkingServices.value).forEach(k => {
+        if (checkingServices.value[k]) checkingServices.value[k] = false
+      })
+    }
+    ElMessage.error(`${currentServiceName.value || '服务'} 登录失败: ${errorMsg}`)
     console.log('❌ [登录管理器] 收到独立错误消息:', errorMsg)
     return
   }
@@ -390,6 +432,16 @@ const handleWebSocketMessage = (message) => {
       
       console.log('✅ [登录管理器] 登录成功 - 用户:', userName, '耗时:', loginTime, '秒')
       console.log('✅ [登录管理器] 登录状态已保存，无需再次验证（避免数据库锁定）')
+    }
+    // 扫码超时（后端以 TASK_RESULT + data.success=false + data.timeout=true 返回）
+    else if (messageType === 'TASK_RESULT' && payload?.success && payload?.data?.success === false && payload?.data?.timeout === true) {
+      loginLoading.value = false
+      loginDialogVisible.value = false
+      if (currentServiceId.value) {
+        checkingServices.value[currentServiceId.value] = false
+      }
+      ElMessage.warning(`${currentServiceName.value} 登录超时，请重新扫码`)
+      console.log('⚠️ [登录管理器] 扫码登录超时:', payload?.data)
     }
     // 登录失败处理
     else if (messageType === 'TASK_RESULT' && payload?.success === false) {
@@ -451,7 +503,10 @@ const checkLoginStatus = (serviceId) => {
   const hostId = userStore.hostId
   const message = {
     type: config.messageTypes.checkLogin,
-    engineId: hostId
+    engineId: hostId,
+    payload: {
+      aiType: serviceId
+    }
   }
 
   sendMessage(message)

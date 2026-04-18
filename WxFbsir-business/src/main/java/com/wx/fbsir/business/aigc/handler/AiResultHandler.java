@@ -18,6 +18,7 @@ import java.util.UUID;
  * @author wxfbsir
  * @date 2026-01-08
  */
+@Deprecated
 @Component
 public class AiResultHandler {
 
@@ -25,6 +26,9 @@ public class AiResultHandler {
 
     @Autowired
     private IAigcService aigcService;
+
+    // 当前生产链路以 EngineMessageRouter.saveAiResult 为单一权威入口，
+    // 本处理器仅保留兼容占位，避免误用导致多入口写库。
 
     /**
      * 处理AI咨询结果并存储到数据库
@@ -55,9 +59,14 @@ public class AiResultHandler {
             String chatId = getStringValue(resultData, "chatId");
             chatData.put("chatId", chatId != null ? chatId : sessionId);
             
-            // 根据AI类型设置对应的会话ID字段（简化版：只支持DeepSeek和元宝）
+            // 根据AI类型设置对应的会话ID字段
             if ("deepseek".equalsIgnoreCase(aiType)) {
                 chatData.put("deepseekChatId", chatId);
+            } else if ("doubao".equalsIgnoreCase(aiType) || "豆包".equals(aiType)) {
+                chatData.put("dbChatId", chatId);
+            } else if ("qianwen".equalsIgnoreCase(aiType) || "千问".equals(aiType)
+                || "tongyi".equalsIgnoreCase(aiType) || "通义千问".equals(aiType) || "通义".equals(aiType)) {
+                chatData.put("toneChatId", chatId);
             } else if ("yuanbao".equalsIgnoreCase(aiType) || "腾讯元宝".equals(aiType)) {
                 // 统一使用yb_chat_id存储元宝会话ID
                 chatData.put("ybChatId", chatId);

@@ -174,7 +174,6 @@ const captchaEnabled = ref(true)
 // 注册开关
 const registerEnabled = ref(false)
 const redirect = ref(undefined)
-const baseApi = (import.meta.env.VITE_APP_BASE_API || "").replace(/\/$/, "")
 const giteeBindVisible = ref(false)
 const giteeBindLoading = ref(false)
 const giteeBindToken = ref("")
@@ -254,9 +253,23 @@ function setLastUsed(provider) {
   localStorage.setItem("lastLoginProvider", provider)
 }
 
-function handleGiteeLogin() {
+async function handleGiteeLogin() {
   setLastUsed("gitee")
-  window.location.href = `${baseApi}/gitlogin`
+  try {
+    const probe = await request({
+      url: "/gitee/oauth/configured",
+      method: "get",
+      headers: { isToken: false }
+    })
+    const configured = probe?.data?.configured === true
+    if (!configured) {
+      ElMessage.warning(probe?.data?.message || "当前环境未配置 Gitee OAuth")
+      return
+    }
+    window.location.href = `${import.meta.env.VITE_APP_BASE_API || ""}/gitlogin`
+  } catch (e) {
+    ElMessage.error("检查 Gitee 配置失败，请稍后重试")
+  }
 }
 
 function handleOauthToken() {

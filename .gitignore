@@ -238,6 +238,11 @@ test-results/
 .vuepress/dist/
 
 ######################################################################
+# Local tooling (not versioned)
+tools/out/
+build-tools/
+
+######################################################################
 # Misc
 .history/
 .eslintcache

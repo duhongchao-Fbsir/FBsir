@@ -6,7 +6,7 @@ import com.wx.fbsir.business.aigc.domain.AiRequest;
 import com.wx.fbsir.business.aigc.service.IAigcService;
 import com.wx.fbsir.business.point.domain.PointsResult;
 import com.wx.fbsir.business.point.service.PointsPrecheckService;
-// import com.wx.fbsir.business.websocket.server.EngineSessionManager;
+import com.wx.fbsir.business.websocket.server.EngineSessionManager;
 import com.wx.fbsir.common.annotation.Log;
 import com.wx.fbsir.common.core.controller.BaseController;
 import com.wx.fbsir.common.core.domain.AjaxResult;
@@ -56,18 +56,16 @@ public class AigcController extends BaseController {
     @Autowired
     private PointsPrecheckService pointsPrecheckService;
 
-    // TODO: 实现WebSocket通信到Engine端
-    // @Autowired
-    // private EngineSessionManager engineSessionManager;
+    @Autowired
+    private EngineSessionManager engineSessionManager;
 
     /**
      * 通用AI请求处理接口
      * 
-     * 支持的请求类型：
-     * - AI_DEEPSEEK_CHECK_LOGIN: DeepSeek登录检查
-     * - AI_DEEPSEEK_SCAN_LOGIN: DeepSeek扫码登录
-     * - AI_DEEPSEEK_QUERY: DeepSeek AI咨询
-     * - 后续扩展: AI_XXX_XXX 类型的请求
+     * 支持的请求类型（与 Engine 能力名一致；登录类为 DEEPSEEK_* / GITEE_*，咨询为 AI_*_QUERY）：
+     * - DEEPSEEK_CHECK_LOGIN / GITEE_CHECK_LOGIN: 登录检查
+     * - DEEPSEEK_SCAN_LOGIN / GITEE_SCAN_LOGIN: 扫码登录
+     * - AI_DEEPSEEK_QUERY / AI_GITEE_QUERY: AI 咨询
      * 
      * @param aiRequest AI请求对象
      * @return 处理结果
@@ -270,12 +268,12 @@ public class AigcController extends BaseController {
         String hostId = aigcService.getUserHostId(userId);
         
         boolean hasHost = hostId != null && !hostId.isEmpty();
-        // boolean engineOnline = hasHost && engineSessionManager.isEngineOnline(hostId);
+        boolean engineOnline = hasHost && engineSessionManager.isEngineOnline(hostId);
         
         Map<String, Object> result = new HashMap<>();
         result.put("hasHostId", hasHost);
         result.put("hostId", hasHost ? hostId : null);
-        result.put("engineOnline", false); // TODO: 实现Engine在线状态检查
+        result.put("engineOnline", engineOnline);
         
         return AjaxResult.success("查询成功", result);
     }

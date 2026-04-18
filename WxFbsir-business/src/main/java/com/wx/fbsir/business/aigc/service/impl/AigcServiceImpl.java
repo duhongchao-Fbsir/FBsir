@@ -116,17 +116,98 @@ public class AigcServiceImpl implements IAigcService {
         deepSeek.put("avatar", "/static/ai/deepseek.png");
         deepSeek.put("onlineStatus", true);
         deepSeek.put("features", List.of("深度思考", "联网搜索", "代码生成"));
+        // 与 Engine 注解真源一致；Engine 侧另注册 AI_*_CHECK_LOGIN 等别名以兼容旧调用
         deepSeek.put("types", List.of(
-            "AI_DEEPSEEK_CHECK_LOGIN",
-            "AI_DEEPSEEK_SCAN_LOGIN", 
+            "DEEPSEEK_CHECK_LOGIN",
+            "DEEPSEEK_SCAN_LOGIN",
             "AI_DEEPSEEK_QUERY"
         ));
         aiList.add(deepSeek);
-        
-        // 未来可扩展其他AI
-        // Map<String, Object> otherAi = new HashMap<>();
-        // ...
-        
+
+        Map<String, Object> giteeAi = new HashMap<>();
+        giteeAi.put("id", "gitee");
+        giteeAi.put("name", "Gitee AI Chat");
+        giteeAi.put("description", "Gitee AI Chat 智能助手");
+        giteeAi.put("avatar", "/static/ai/gitee.png");
+        giteeAi.put("onlineStatus", true);
+        giteeAi.put("features", List.of("开源探索", "仓库问答", "帮助中心"));
+        giteeAi.put("types", List.of(
+            "GITEE_CHECK_LOGIN",
+            "GITEE_SCAN_LOGIN",
+            "AI_GITEE_QUERY"
+        ));
+        aiList.add(giteeAi);
+
+        Map<String, Object> doubaoAi = new HashMap<>();
+        doubaoAi.put("id", "doubao");
+        doubaoAi.put("name", "豆包");
+        doubaoAi.put("description", "字节豆包网页版对话");
+        doubaoAi.put("avatar", "https://lf-flow-web-cdn.doubao.com/obj/flow-doubao/doubao/chat/logo-icon2.png");
+        doubaoAi.put("onlineStatus", true);
+        doubaoAi.put("features", List.of("多轮对话", "网页自动化"));
+        doubaoAi.put("types", List.of(
+            "DOUBAO_CHECK_LOGIN",
+            "DOUBAO_SCAN_LOGIN",
+            "AI_DOUBAO_QUERY"
+        ));
+        aiList.add(doubaoAi);
+
+        Map<String, Object> qianwenAi = new HashMap<>();
+        qianwenAi.put("id", "qianwen");
+        qianwenAi.put("name", "千问");
+        qianwenAi.put("description", "阿里千问网页版对话");
+        qianwenAi.put("avatar", "https://img.alicdn.com/imgextra/i4/O1CN01uar8u91DHWktnF2fl_!!6000000000191-2-tps-110-110.png");
+        qianwenAi.put("onlineStatus", true);
+        qianwenAi.put("features", List.of("多轮对话", "网页自动化"));
+        qianwenAi.put("types", List.of(
+            "QIANWEN_CHECK_LOGIN",
+            "QIANWEN_SCAN_LOGIN",
+            "AI_QIANWEN_QUERY"
+        ));
+        aiList.add(qianwenAi);
+
+        Map<String, Object> yuanbaoAi = new HashMap<>();
+        yuanbaoAi.put("id", "yuanbao");
+        yuanbaoAi.put("name", "腾讯元宝");
+        yuanbaoAi.put("description", "腾讯元宝网页版对话");
+        yuanbaoAi.put("avatar", "https://lf-flow-web-cdn.doubao.com/obj/flow-doubao/doubao/chat/logo-icon2.png");
+        yuanbaoAi.put("onlineStatus", true);
+        yuanbaoAi.put("features", List.of("多轮对话", "网页自动化"));
+        yuanbaoAi.put("types", List.of(
+            "YUANBAO_CHECK_LOGIN",
+            "YUANBAO_SCAN_LOGIN",
+            "AI_YUANBAO_QUERY"
+        ));
+        aiList.add(yuanbaoAi);
+
+        Map<String, Object> wenxinAi = new HashMap<>();
+        wenxinAi.put("id", "wenxin");
+        wenxinAi.put("name", "文心一言");
+        wenxinAi.put("description", "百度文心一言网页版对话");
+        wenxinAi.put("avatar", "https://bce.bdstatic.com/p3m/common-service/uploads/logo_8ee44a1.png");
+        wenxinAi.put("onlineStatus", true);
+        wenxinAi.put("features", List.of("多轮对话", "网页自动化"));
+        wenxinAi.put("types", List.of(
+            "WENXIN_CHECK_LOGIN",
+            "WENXIN_SCAN_LOGIN",
+            "AI_WENXIN_QUERY"
+        ));
+        aiList.add(wenxinAi);
+
+        Map<String, Object> mitaAi = new HashMap<>();
+        mitaAi.put("id", "mita");
+        mitaAi.put("name", "秘塔");
+        mitaAi.put("description", "秘塔 AI 搜索网页版");
+        mitaAi.put("avatar", "https://metaso.cn/favicon.ico");
+        mitaAi.put("onlineStatus", true);
+        mitaAi.put("features", List.of("多轮对话", "网页自动化"));
+        mitaAi.put("types", List.of(
+            "MITA_CHECK_LOGIN",
+            "MITA_SCAN_LOGIN",
+            "AI_MITA_QUERY"
+        ));
+        aiList.add(mitaAi);
+
         return aiList;
     }
 

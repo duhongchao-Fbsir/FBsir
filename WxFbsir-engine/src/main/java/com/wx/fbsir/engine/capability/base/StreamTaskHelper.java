@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -443,6 +444,16 @@ public abstract class StreamTaskHelper {
 
             if (data != null) {
                 builder.payload("data", data);
+                // 顶层附带 userPrompt，便于 Admin 落库时优先使用（避免仅嵌套在 data 内时部分环境下反序列化异常导致草稿箱乱码）
+                if (isAiTask && data instanceof Map<?, ?> dm) {
+                    Object q = dm.get("query");
+                    if (q != null) {
+                        String qs = q.toString();
+                        if (!qs.isEmpty()) {
+                            builder.payload("userPrompt", qs);
+                        }
+                    }
+                }
             }
 
             StreamTaskHelper.this.webSocketClientManager.sendMessage(builder.build());

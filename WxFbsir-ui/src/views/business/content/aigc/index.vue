@@ -201,6 +201,26 @@
                         {{ option.label }}
                       </el-tag>
                     </div>
+                    <div v-if="ai.id === 'gitee' && aiStates[ai.id]?.options?.repositoryQA" class="gitee-suboption-row">
+                      <span class="gitee-suboption-label">仓库选择</span>
+                      <el-select
+                        v-model="giteeRepositoryName"
+                        size="small"
+                        style="width: 260px"
+                        :placeholder="giteeRepositoryChoicesLoading ? '登录检测中...' : '请选择仓库'"
+                        :loading="giteeRepositoryChoicesLoading"
+                        :disabled="!canSelectGiteeRepository"
+                      >
+                        <el-option
+                          v-for="item in (ai.repositoryChoices || [])"
+                          :key="item.value"
+                          :label="item.label"
+                          :value="item.value"
+                        />
+                      </el-select>
+                      <span v-if="giteeRepositoryChoicesLoading" class="gitee-suboption-hint">等待登录状态确认...</span>
+                      <span v-else-if="!ai.loggedIn" class="gitee-suboption-hint">请先完成 Gitee 登录</span>
+                    </div>
                   </div>
                 </el-card>
               </div>
@@ -264,7 +284,7 @@
               </template>
               <div class="task-flow">
                 <!-- 🔥 支持多AI任务流程展示 -->
-                <div v-for="(ai, aiIndex) in enabledAIs" :key="aiIndex" class="task-item">
+                <div v-for="(ai, aiIndex) in enabledAIs" :key="ai.aiId || aiIndex" class="task-item">
                   <div class="task-header" @click="toggleAiExpand(ai)">
                     <div class="header-left">
                       <el-icon class="expand-icon" :class="{ 'is-expanded': ai.isExpanded }">
@@ -461,19 +481,25 @@ import {
   saveOutputArtifact
 } from '@/api/business/content/aigc/output'
 import { buildWebSocketUrl } from '@/utils/websocket'
+import { normalizeEngineInboundMessage } from '@/utils/engineMessageNormalizer'
 import useUserStore from '@/store/modules/user'
 import {
   ENGINE_CONFIGS,
   DEFAULT_CONFIG,
   getEngineConfig,
+  getEngineConfigByMessageType,
   getAiServices,
   getAiQueryMessageType,
   getServiceScanLoginMessageType,
+  getServiceCheckLoginMessageType,
   getAiScanLoginMessageType,
   initServiceOptionsState,
   handleExclusiveOptionToggle,
-  updateServiceLoginStatus
+  applyGiteeOptionsToggle,
+  updateServiceLoginStatus,
+  updateServiceDynamicChoices
 } from '@/config/engineConfig'
+import { AI_CAPABILITY_MATRIX, buildCompatibleAiPayload } from '@/utils/aiCapabilityMapper'
 
 export default {
   name: 'AiAssistant',
@@ -499,6 +525,66 @@ export default {
 
     // 🔥 动态AI状态管理
     const aiStates = ref({})
+    const giteeRepositoryName = ref('')
+    const giteeRepositoryChoicesLoading = ref(false)
+
+    const canSelectGiteeRepository = computed(() => {
+      const giteeConfig = getEngineConfig('gitee')
+      return !!(giteeConfig?.loggedIn && !giteeRepositoryChoicesLoading.value)
+    })
+
+    const syncGiteeRepositoryChoices = (resultData) => {
+      const rawChoices = resultData?.repositoryChoices
+      if (!Array.isArray(rawChoices)) return
+
+      const normalized = rawChoices
+        .map(item => String(item || '').trim())
+        .filter(Boolean)
+
+      const uniqueChoices = Array.from(new Set(normalized))
+      const mappedChoices = [
+        { label: '页面默认仓库', value: '' },
+        ...uniqueChoices.map(item => ({ label: item, value: item }))
+      ]
+
+      updateServiceDynamicChoices('gitee', 'repositoryChoices', mappedChoices)
+
+      if (giteeRepositoryName.value
+        && !mappedChoices.some(item => item.value === giteeRepositoryName.value)) {
+        giteeRepositoryName.value = ''
+      }
+    }
+
+    const normalizeAiType = (value, fallback = 'unknown') => {
+      const raw = String(value || '').trim().toLowerCase()
+      if (!raw) return fallback
+      if (getEngineConfig(raw)) return raw
+      if (raw === 'tongyi' || raw === 'ty') return 'qianwen'
+      if (raw === 'baidu') return 'wenxin'
+      if (raw === 'metaso') return 'mita'
+      return fallback
+    }
+
+    const inferAiTypeFromMessageType = (messageType) => {
+      const cfg = getEngineConfigByMessageType(messageType)
+      return cfg?.id || 'unknown'
+    }
+
+    const resolveAiIdentifier = (rawNameOrId) => {
+      const raw = String(rawNameOrId || '').trim()
+      if (!raw) return 'unknown'
+      const normalized = normalizeAiType(raw, '')
+      if (normalized) return normalized
+      const byDisplay = ENGINE_CONFIGS.find(cfg => cfg.displayName === raw)
+      return byDisplay?.id || 'unknown'
+    }
+
+    const requestGiteeRepositoryChoices = () => {
+      giteeRepositoryChoicesLoading.value = true
+      sessionId = generateUUID()
+      const checkType = getServiceCheckLoginMessageType('gitee')
+      sendWebSocketMessage(checkType, { sessionId: sessionId, aiType: 'gitee' })
+    }
 
     // 🔥 初始化AI状态
     const initAiStates = () => {
@@ -515,25 +601,24 @@ export default {
 
     // 🔥 切换AI选项
     const toggleAiOption = (aiId, optionId) => {
+      const aiConfig = getEngineConfig(aiId)
+      if (!aiStates.value[aiId]?.enabled || (aiConfig?.requireLogin && !aiConfig.loggedIn)) {
+        return
+      }
+
       const currentState = aiStates.value[aiId].options
       const newValue = !currentState[optionId]
 
-      // gitee 服务：模式选项（openSourceExploration/helpCenter）互斥，但 enableFileUpload 独立
+      // gitee：模式互斥由 engineConfig.applyGiteeOptionsToggle 单源驱动（与 exclusive 配置一致）
       if (aiId === 'gitee') {
-        const newState = { ...currentState }
-        const modeOptions = ['openSourceExploration', 'helpCenter']
-        if (modeOptions.includes(optionId)) {
-          // 模式选项互斥：选中时取消其他模式，不影响 enableFileUpload
-          if (newValue) {
-            modeOptions.forEach(key => { newState[key] = key === optionId })
-          } else {
-            newState[optionId] = false
-          }
-        } else {
-          // 非模式选项（如 enableFileUpload）独立切换
-          newState[optionId] = newValue
-        }
+        const { newState, needRequestRepositoryChoices } = applyGiteeOptionsToggle(optionId, newValue, currentState)
         aiStates.value[aiId].options = newState
+        if (!newState.repositoryQA) {
+          giteeRepositoryName.value = ''
+          giteeRepositoryChoicesLoading.value = false
+        } else if (needRequestRepositoryChoices) {
+          requestGiteeRepositoryChoices()
+        }
       } else {
         // 其他服务使用默认的互斥逻辑
         aiStates.value[aiId].options = handleExclusiveOptionToggle(aiId, optionId, newValue, currentState)
@@ -754,6 +839,7 @@ export default {
         dbChatId: '',
         tyChatId: '',
         deepseekChatId: '',
+        giteeChatId: '',
         maxChatId: '',
         metasoChatId: '',
         kimiChatId: '',
@@ -828,7 +914,7 @@ export default {
           enabledAIs.value = uniqueAiTypes.map(buildEnabledAiFromType)
         } else {
           // 🔥 根据AI类型动态构造任务流程
-          const aiType = historyData.aiType || nestedData.aiType || 'deepseek'
+          const aiType = normalizeAiType(historyData.aiType || nestedData.aiType)
           enabledAIs.value = [buildEnabledAiFromType(aiType)]
         }
 
@@ -842,7 +928,7 @@ export default {
         // 🔥 按aiType分配日志给对应的AI（支持多AI任务流程显示）
         if (progressLogs.value.length > 0 && enabledAIs.value.length > 0) {
           progressLogs.value.forEach(log => {
-            const logAiType = log.aiType || 'deepseek'
+            const logAiType = normalizeAiType(log.aiType)
             const targetAi = enabledAIs.value.find(ai =>
               ai.name.toLowerCase().includes(logAiType.toLowerCase())
             )
@@ -866,7 +952,7 @@ export default {
 
         // 恢复执行结果（🔥 添加截图相关字段）
         const mapHistoryResult = (result = {}) => {
-          const resultAiType = result.aiType || historyData.aiType || nestedData.aiType || 'deepseek'
+          const resultAiType = normalizeAiType(result.aiType || historyData.aiType || nestedData.aiType)
           const resultAiConfig = getEngineConfig(resultAiType)
           const resultAiName = resultAiConfig ? resultAiConfig.displayName : resultAiType
           const resultAnswer = result.answer || result.content || ''
@@ -876,6 +962,7 @@ export default {
 
           return {
             aiName: result.aiName || resultAiName,
+            aiType: resultAiType,
             content: result.textContent || resultAnswer,
             screenshotUrl,
             hasScreenshot: result.hasScreenshot !== false && !!screenshotUrl,
@@ -901,12 +988,13 @@ export default {
             (nestedData.answer.startsWith('http://') || nestedData.answer.startsWith('https://'))
 
           // 🔥 动态获取 AI 显示名称
-          const historyAiType = nestedData.aiType || historyData.aiType || 'deepseek'
+          const historyAiType = normalizeAiType(nestedData.aiType || historyData.aiType)
           const historyAiConfig = getEngineConfig(historyAiType)
           const historyAiName = historyAiConfig ? historyAiConfig.displayName : historyAiType
 
           results.value = [{
             aiName: historyAiName,  // 🔥 动态 AI 名称
+            aiType: historyAiType,
             content: nestedData.answer,  // 可能是截图URL或文本
             screenshotUrl: nestedData.conversationScreenshot || (answerIsUrl ? nestedData.answer : null),
             hasScreenshot: nestedData.hasScreenshot !== false && (nestedData.conversationScreenshot || answerIsUrl),
@@ -936,17 +1024,24 @@ export default {
 
         // 🔥 恢复所有AI会话ID（关键：上下文复用）
         userInfoReq.value.chatId = restoredChatId
-        userInfoReq.value.toneChatId = item.toneChatId || ''
-        userInfoReq.value.ybChatId = item.ybChatId || ''
-        userInfoReq.value.dbChatId = item.dbChatId || ''
-        userInfoReq.value.tyChatId = item.tyChatId || ''
-        // 🔥 DeepSeek会话ID：优先从nestedData获取（AI上下文复用），其次从数据库字段
-        userInfoReq.value.deepseekChatId = item.deepseekChatId || findStoredResultByAiType('deepseek')?.chatId || nestedData.chatId || ''
-        userInfoReq.value.giteeChatId = item.giteeChatId || findStoredResultByAiType('gitee')?.chatId || nestedData.chatId || ''
+        userInfoReq.value.toneChatId = item.toneChatId
+          || findStoredResultByAiType('qianwen')?.chatId
+          || findStoredResultByAiType('tongyi')?.chatId
+          || ''
+        userInfoReq.value.ybChatId = item.ybChatId || findStoredResultByAiType('yuanbao')?.chatId || ''
+        userInfoReq.value.dbChatId = item.dbChatId || findStoredResultByAiType('doubao')?.chatId || ''
+        userInfoReq.value.tyChatId = item.tyChatId || item.toneChatId
+          || findStoredResultByAiType('qianwen')?.chatId
+          || findStoredResultByAiType('tongyi')?.chatId
+          || ''
+        // DeepSeek 会话ID仅允许 DeepSeek 自有来源，禁止跨AI chatId回填
+        userInfoReq.value.deepseekChatId = item.deepseekChatId || findStoredResultByAiType('deepseek')?.chatId || ''
+        // Gitee 会话ID只能使用 Gitee 自己的历史结果，不能回退到其它AI的 chatId
+        userInfoReq.value.giteeChatId = item.giteeChatId || findStoredResultByAiType('gitee')?.chatId || ''
         userInfoReq.value.maxChatId = item.maxChatId || ''
-        userInfoReq.value.metasoChatId = item.metasoChatId || ''
+        userInfoReq.value.metasoChatId = item.metasoChatId || findStoredResultByAiType('mita')?.chatId || ''
         userInfoReq.value.kimiChatId = item.kimiChatId || ''
-        userInfoReq.value.baiduChatId = item.baiduChatId || ''
+        userInfoReq.value.baiduChatId = item.baiduChatId || findStoredResultByAiType('wenxin')?.chatId || ''
         userInfoReq.value.zhzdChatId = item.zhzdChatId || ''
         userInfoReq.value.isNewChat = false
 
@@ -1091,26 +1186,54 @@ export default {
         }
 
         const aiOptions = state.options || {}
+        if (aiId === 'gitee' && aiOptions.repositoryQA && giteeRepositoryChoicesLoading.value) {
+          ElMessage.warning('Gitee 登录检测中，请稍后再发送')
+          continue
+        }
         const chatIdField = config.chatIdField || `${aiId}ChatId`
         const aiChatId = userInfoReq.value[chatIdField] || ''
 
-        const payload = {
+        const providerOptions = {}
+        if (aiId === 'gitee' && aiOptions.repositoryQA) {
+          providerOptions.repositoryName = giteeRepositoryName.value || ''
+        }
+
+        const { payload, normalized } = buildCompatibleAiPayload({
+          aiId,
           query: promptInput.value,
           uploadedFileUrl: uploadedFileUrl.value || '',
           chatId: currentChatId.value,
           sessionId: sessionId,
-          aiType: aiId,
           isNewChat: isNewChat.value,
           userPrompt: promptInput.value,
           enabledAIs: enabledAIs.value,
-          progressLogs: progressLogs.value
-        }
-        payload[chatIdField] = aiChatId
-        Object.keys(aiOptions).forEach(optionKey => {
-          payload[optionKey] = aiOptions[optionKey]
+          progressLogs: progressLogs.value,
+          chatIdField,
+          aiChatId,
+          aiOptions,
+          providerOptions
         })
 
+        if (normalized.unsupportedEnabledOptions.length > 0) {
+          const unsupportedLabels = normalized.unsupportedEnabledOptions.join('、')
+          addProgressLog(`${config.displayName}不支持能力：${unsupportedLabels}，已自动降级处理`, aiId)
+        }
+        const supportInfo = AI_CAPABILITY_MATRIX[aiId]
+        if (!supportInfo) {
+          addProgressLog(`${config.displayName}能力矩阵未配置，按兼容模式发送`, aiId)
+        }
+
         aiPayloads.push({ aiId, config, payload })
+      }
+
+      if (aiPayloads.length === 0) {
+        isSending.value = false
+        taskStarted.value = false
+        taskStatus.value = 'failed'
+        enabledAIs.value = []
+        progressLogs.value = []
+        screenshots.value = []
+        return
       }
 
       // 🔥 首次发送后标记为非新会话
@@ -1162,7 +1285,7 @@ export default {
           ...payload,
           sessionId: sessionId,
           chatId: finalChatId,
-          aiType: payload.aiType || 'deepseek'
+          aiType: normalizeAiType(payload.aiType, inferAiTypeFromMessageType(type))
         }
       }
       console.log('🔥 [WebSocket] 发送消息 - engineId:', engineId, 'chatId:', finalChatId, 'sessionId:', sessionId)
@@ -1170,17 +1293,8 @@ export default {
     }
 
     const connectWebSocket = (callback) => {
-      // 从 cookie 获取 token（比你原来的 getToken 更稳）
       const token = Cookies.get('Admin-Token')
-
-      // 自动判断 ws / wss（关键）
-      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-
-      // 直接拼接，不再用 buildWebSocketUrl（避免它写死 ws://）
-      const host = window.location.hostname
-      const port = ['localhost', '127.0.0.1'].includes(host) ? ':8080' : ''
-      const wsUrl = `${protocol}://${host}${port}/ws/client?clientType=web&token=${token}`
-
+      const wsUrl = buildWebSocketUrl({ path: '/ws/client', token, clientType: 'web' })
       console.log('连接WebSocket:', wsUrl)
 
       websocket = new WebSocket(wsUrl)
@@ -1207,7 +1321,8 @@ export default {
 
     const checkDeepSeekLoginStatus = () => {
       sessionId = generateUUID()
-      sendWebSocketMessage('AI_DEEPSEEK_CHECK_LOGIN', { sessionId: sessionId, aiType: 'deepseek' })
+      // 登录检测能力在 Engine 端是非 AI 能力（DEEPSEEK_CHECK_LOGIN）
+      sendWebSocketMessage('DEEPSEEK_CHECK_LOGIN', { sessionId: sessionId, aiType: 'deepseek' })
     }
 
     const handleWebSocketMessage = (data) => {
@@ -1215,9 +1330,21 @@ export default {
         const message = JSON.parse(data)
         console.log('收到WebSocket消息:', message)
 
-        // Engine返回的消息格式：messageType/type 表示消息类型
-        const messageType = message.messageType || message.type
-        const payload = message.payload || {}
+        const n = normalizeEngineInboundMessage(message)
+        const messageType = n.messageType
+        const payload = n.payload
+        const payloadData = n.payloadData
+        const payloadAiType = n.aiType
+
+        // 兜底登录检测处理：兼容非标准 messageType（例如数值code）
+        if (payloadData.isLoggedIn !== undefined || payload.isLoggedIn !== undefined) {
+          const loginData = payloadData.isLoggedIn !== undefined ? payloadData : payload
+          if (payloadAiType === 'gitee') {
+            giteeRepositoryChoicesLoading.value = false
+            syncGiteeRepositoryChoices(loginData)
+          }
+          updateServiceLoginStatus(payloadAiType, loginData.isLoggedIn === true)
+        }
 
         // ==========================================================================
         // 🤖 AIGC消息处理（仅支持AI_TASK_*格式）
@@ -1232,7 +1359,7 @@ export default {
         // 处理AI任务日志（AI_TASK_LOG）
         if (messageType === 'AI_TASK_LOG') {
           const logMessage = payload.message
-          const aiType = payload.aiType || 'deepseek'
+          const aiType = payloadAiType
           if (logMessage) {
             addProgressLog(logMessage, aiType)
           }
@@ -1257,12 +1384,12 @@ export default {
           }
         }
 
-        // 处理结果消息（AI_TASK_RESULT）
-        if (messageType === 'AI_TASK_RESULT') {
+        // 处理结果消息（AI_TASK_RESULT / TASK_RESULT）
+        if (messageType === 'AI_TASK_RESULT' || messageType === 'TASK_RESULT') {
           const resultData = payload.data || payload
           const success = payload.success
-          const aiType = payload.aiType || 'deepseek'
-          const messageSessionId = payload.sessionId || data.sessionId  // 🔥 从payload或data中获取sessionId
+          const aiType = n.aiType
+          const messageSessionId = n.sessionId
 
           console.log('🔥 [AIGC] AI_TASK_RESULT - aiType:', aiType, 'success:', success, 'sessionId:', messageSessionId, 'resultData:', resultData)
 
@@ -1271,6 +1398,10 @@ export default {
             if (resultData.isLoggedIn !== undefined || (resultData.data && resultData.data.isLoggedIn !== undefined)) {
               const isLoggedIn = resultData.isLoggedIn !== undefined ? resultData.isLoggedIn : resultData.data?.isLoggedIn
               const userName = resultData.userName || resultData.data?.userName || ''
+              if (aiType === 'gitee') {
+                giteeRepositoryChoicesLoading.value = false
+                syncGiteeRepositoryChoices(resultData.data || resultData)
+              }
               updateServiceLoginStatus(aiType, isLoggedIn === true)
               if (isLoggedIn) {
                 ElMessage.success(`${aiType} 已登录: ${userName}`)
@@ -1293,8 +1424,11 @@ export default {
 
             // 处理AI咨询结果
             if (resultData.answer) {
+              if (aiType === 'gitee') {
+                syncGiteeRepositoryChoices(resultData)
+              }
               // 🔥 更新对应AI的完成状态
-              const targetAi = enabledAIs.value.find(ai => ai.name.toLowerCase().includes(aiType.toLowerCase()))
+              const targetAi = enabledAIs.value.find(ai => ai.aiId === aiType)
               if (targetAi) {
                 targetAi.status = 'completed'
               }
@@ -1312,6 +1446,7 @@ export default {
               // 🔥 优先使用截图，文本作为备用
               const resultItem = {
                 aiName: aiDisplayName,
+                aiType: aiType,
                 content: resultData.answer,
                 screenshotUrl: resultData.conversationScreenshot,
                 hasScreenshot: resultData.hasScreenshot !== false && resultData.conversationScreenshot,
@@ -1340,7 +1475,7 @@ export default {
             }
           } else {
             // 处理错误（success=false）
-            const targetAi = enabledAIs.value.find(ai => ai.name.toLowerCase().includes(aiType.toLowerCase()))
+            const targetAi = enabledAIs.value.find(ai => ai.aiId === aiType)
             if (targetAi) {
               targetAi.status = 'failed'
             }
@@ -1357,15 +1492,13 @@ export default {
 
         // 处理错误消息（AI_TASK_ERROR）
         if (messageType === 'AI_TASK_ERROR') {
-          const aiType = payload.aiType || 'deepseek'
+          const aiType = n.aiType
           const errorTitle = payload.errorTitle || '任务失败'
           const errorMessage = payload.errorMessage || payload.message || 'AI任务执行失败'
           const engineId = payload.engineId || '未知'
 
           // 更新对应AI的状态
-          const targetAi = enabledAIs.value.find(ai =>
-            ai.name.toLowerCase().includes(aiType.toLowerCase())
-          )
+          const targetAi = enabledAIs.value.find(ai => ai.aiId === aiType)
           if (targetAi) {
             targetAi.status = 'error'
           }
@@ -1409,20 +1542,19 @@ export default {
       }
     }
 
-    const addProgressLog = (content, aiType = 'deepseek') => {
+    const addProgressLog = (content, aiType = 'unknown') => {
+      const normalizedAiType = normalizeAiType(aiType)
       const logEntry = {
         content: content,
         timestamp: new Date(),
-        aiType: aiType
+        aiType: normalizedAiType
       }
 
       // 添加到全局日志
       progressLogs.value.push(logEntry)
 
       // 🔥 同时添加到对应AI的日志列表（支持按AI区分显示）
-      const targetAi = enabledAIs.value.find(ai =>
-        ai.name.toLowerCase().includes(aiType.toLowerCase())
-      )
+      const targetAi = enabledAIs.value.find(ai => ai.aiId === normalizedAiType)
       if (targetAi) {
         if (!targetAi.progressLogs) {
           targetAi.progressLogs = []
@@ -1430,7 +1562,7 @@ export default {
         targetAi.progressLogs.push(logEntry)
       }
 
-      console.log('📋 [进度日志]', aiType, ':', content)
+      console.log('📋 [进度日志]', normalizedAiType, ':', content)
     }
 
     // 🔥 数据存储已完全由后端Admin自动处理
@@ -1481,7 +1613,7 @@ export default {
         // 🔥 从数据库获取真实的draft_content文本
         // taskId应该是sessionId，而不是chatId
         const taskId = result.sessionId || currentChatId.value
-        const aiName = result.aiName || 'deepseek'
+        const aiName = resolveAiIdentifier(result.aiType || result.aiName)
 
         console.log('🔥 [复制] taskId:', taskId, 'aiName:', aiName)
         const response = await getDraftContent(taskId, aiName)
@@ -1505,7 +1637,7 @@ export default {
         return state.enabled && state.options?.enableFileUpload
       })
       if (!hasFileUploadEnabled) {
-        ElMessage.warning('请先为至少一个AI启用"上传图片"选项')
+        ElMessage.warning('请先为至少一个AI启用「上传文件」选项')
         return
       }
       uploadDialogVisible.value = true
@@ -1569,15 +1701,13 @@ export default {
       }
 
       try {
-        const result = results.value[0]
-        // 🔥 后端已自动保存，前端只需要提示用户
-        // 保存逻辑在后端EngineMessageRouter.saveToExtensionTable中自动完成
-        // 优先保存截图URL，同时保存文本内容和hasScreenshot标记
-        await addDraft({
-          aiName: result.aiName,
+        // 与后端自动落库并行，前端补存时按 AI 逐条补齐，避免多AI场景只保存首条。
+        const draftPayloads = results.value.map(result => ({
+          aiName: resolveAiIdentifier(result.aiType || result.aiName),
           content: result.content,
           shareUrl: result.shareUrl
-        })
+        }))
+        await Promise.all(draftPayloads.map(payload => addDraft(payload)))
         ElMessage.success('已保存到草稿库')
       } catch (error) {
         console.error('保存草稿失败:', error)
@@ -1867,6 +1997,9 @@ export default {
       // 🔥 动态AI配置
       aiServices,
       aiStates,
+      giteeRepositoryName,
+      giteeRepositoryChoicesLoading,
+      canSelectGiteeRepository,
       currentLoginServiceName,
       // 🔥 新增：上下文复用相关
       enabledAIs,
@@ -1924,6 +2057,25 @@ export default {
 <style lang="scss" scoped>
 .ai-management-platform {
   padding: 0;
+}
+
+.gitee-suboption-row {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gitee-suboption-label {
+  font-size: 12px;
+  color: #606266;
+  white-space: nowrap;
+}
+
+.gitee-suboption-hint {
+  font-size: 12px;
+  color: #909399;
+  white-space: nowrap;
 }
 
 .top-nav {
@@ -2380,14 +2532,24 @@ export default {
   }
 
   .task-flow {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    max-height: 720px;
+    overflow-y: auto;
+    padding-right: 4px;
+
     .task-item {
       background: #fff;
       border: 1px solid #e4e7ed;
       border-radius: 8px;
       padding: 12px;
-      margin-bottom: 15px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
       transition: box-shadow 0.3s;
+      display: flex;
+      flex-direction: column;
+      min-height: 280px;
+      max-height: 340px;
 
       &:hover {
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
@@ -2445,8 +2607,14 @@ export default {
         padding: 10px 15px;
         background: #fafafa;
         border-radius: 6px;
-        max-height: 350px;
-        overflow-y: auto;
+        flex: 1;
+        min-height: 0;
+
+        .timeline-scroll {
+          height: 100%;
+          overflow-y: auto;
+          padding-right: 2px;
+        }
 
         .progress-item {
           display: flex;
@@ -2476,6 +2644,12 @@ export default {
           }
         }
       }
+    }
+  }
+
+  @media (max-width: 1200px) {
+    .task-flow {
+      grid-template-columns: 1fr;
     }
   }
 
