@@ -5,6 +5,7 @@ import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Frame;
 import com.microsoft.playwright.options.LoadState;
 import com.microsoft.playwright.options.WaitUntilState;
+import com.wx.fbsir.engine.playwright.util.AssistantReplyTextExtractor;
 import com.wx.fbsir.engine.utils.common.FileDownloadUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -170,7 +171,7 @@ public class QianwenUtil {
             try {
                 prepareChatWorkspace(page);
                 if (fillAndSend(page, text)) {
-                    return waitForAssistantReply(page);
+                    return waitForAssistantReply(page, text);
                 }
             } catch (Exception e) {
                 log.debug("[Qianwen] 第{}次发送尝试异常: {}", attempt, e.getMessage());
@@ -188,8 +189,7 @@ public class QianwenUtil {
         try {
             input.click();
             page.waitForTimeout(200);
-            input.fill("");
-            input.fill(text);
+            AssistantReplyTextExtractor.fillComposerUtf8(input, text);
             page.waitForTimeout(200);
 
             String[] sendSelectors = {
@@ -410,8 +410,7 @@ public class QianwenUtil {
                     }
                     loc.click();
                     frame.page().waitForTimeout(150);
-                    loc.fill("");
-                    loc.fill(text);
+                    AssistantReplyTextExtractor.fillComposerUtf8(loc, text);
                     frame.page().waitForTimeout(150);
 
                     String[] sendSelectors = {
@@ -444,7 +443,7 @@ public class QianwenUtil {
         return false;
     }
 
-    private String waitForAssistantReply(Page page) {
+    private String waitForAssistantReply(Page page, String userQuery) {
         long start = System.currentTimeMillis();
         long maxWait = 300000;
         String last = "";
@@ -461,7 +460,7 @@ public class QianwenUtil {
                 continue;
             }
 
-            String text = extractLatestAssistantText(page);
+            String text = extractLatestAssistantText(page, userQuery);
             if (text != null && !text.trim().isEmpty()) {
                 if (text.equals(last)) {
                     stable++;
@@ -476,7 +475,7 @@ public class QianwenUtil {
             page.waitForTimeout(500);
         }
 
-        String fallback = extractLatestAssistantText(page);
+        String fallback = extractLatestAssistantText(page, userQuery);
         if (fallback != null && !fallback.trim().isEmpty()) {
             return fallback.trim();
         }
@@ -502,25 +501,10 @@ public class QianwenUtil {
         }
     }
 
-    private String extractLatestAssistantText(Page page) {
+    private String extractLatestAssistantText(Page page, String userQuery) {
         try {
-            Object o = page.evaluate("""
-                () => {
-                  const candidates = [];
-                  document.querySelectorAll('[class*="message"], [class*="Message"], [data-role="assistant"]').forEach(el => {
-                    const t = (el.innerText || '').trim();
-                    if (t.length > 5) candidates.push(t);
-                  });
-                  if (candidates.length > 0) return candidates[candidates.length - 1];
-                  let best = '';
-                  document.querySelectorAll('article, [class*="markdown"], [class*="Markdown"]').forEach(el => {
-                    const t = (el.innerText || '').trim();
-                    if (t.length > best.length) best = t;
-                  });
-                  return best || '';
-                }
-                """);
-            return o != null ? o.toString() : null;
+            String s = AssistantReplyTextExtractor.extractLatestAssistantPlainText(page, userQuery);
+            return (s == null || s.isBlank()) ? null : s;
         } catch (Exception e) {
             log.debug("[Qianwen] 提取正文失败: {}", e.getMessage());
             return null;

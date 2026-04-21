@@ -5,6 +5,7 @@ import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.LoadState;
 import com.microsoft.playwright.options.WaitUntilState;
+import com.wx.fbsir.engine.playwright.util.AssistantReplyTextExtractor;
 import com.wx.fbsir.engine.utils.common.FileDownloadUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -384,7 +385,7 @@ public class YuanbaoUtil {
         if (!fillAndSend(page, query.trim())) {
             throw new RuntimeException("未找到输入框或发送失败");
         }
-        return waitForAssistantReply(page);
+        return waitForAssistantReply(page, query.trim());
     }
 
     /**
@@ -403,11 +404,12 @@ public class YuanbaoUtil {
             return false;
         }
         try {
-            input.click();
-            page.waitForTimeout(200);
-            input.fill("");
-            input.fill(text);
-            page.waitForTimeout(200);
+            fillComposerWithYuanbaoFallback(page, input, text);
+            if (!composerLooksLikeExpected(input, text)) {
+                log.warn("[Yuanbao] 输入框内容校验未通过，执行 DOM 回填重试");
+                fillComposerViaDom(page, text);
+                page.waitForTimeout(200);
+            }
 
             String[] sendSelectors = {
                 "button:has-text('发送')",
@@ -437,6 +439,103 @@ public class YuanbaoUtil {
         }
     }
 
+    private void fillComposerWithYuanbaoFallback(Page page, Locator input, String text) {
+        input.click();
+        page.waitForTimeout(120);
+        try {
+            page.keyboard().press("Control+A");
+            page.keyboard().press("Backspace");
+        } catch (Exception ignore) {
+            // ignore
+        }
+        boolean hasNonAscii = text.chars().anyMatch(ch -> ch > 127);
+        if (hasNonAscii) {
+            try {
+                page.keyboard().insertText(text);
+                page.waitForTimeout(120);
+                return;
+            } catch (Exception e) {
+                log.debug("[Yuanbao] keyboard.insertText 失败，改用通用填充: {}", e.getMessage());
+            }
+        }
+        AssistantReplyTextExtractor.fillComposerUtf8(input, text);
+        page.waitForTimeout(120);
+    }
+
+    private boolean composerLooksLikeExpected(Locator input, String expected) {
+        try {
+            String got = String.valueOf(input.evaluate("""
+                (el) => {
+                  const tag = (el.tagName || '').toLowerCase();
+                  if (tag === 'textarea' || tag === 'input') {
+                    return (el.value || '').toString();
+                  }
+                  return (el.innerText || el.textContent || '').toString();
+                }
+                """));
+            if (got == null) {
+                return false;
+            }
+            String a = got.replaceAll("\\s+", " ").trim();
+            String b = expected.replaceAll("\\s+", " ").trim();
+            if (a.isEmpty() || b.isEmpty()) {
+                return false;
+            }
+            int prefix = Math.min(24, b.length());
+            return a.contains(b.substring(0, prefix));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void fillComposerViaDom(Page page, String text) {
+        try {
+            page.evaluate("""
+                (value) => {
+                  const isVisible = (el) => {
+                    if (!el) return false;
+                    const st = window.getComputedStyle(el);
+                    const r = el.getBoundingClientRect();
+                    return r.width > 40 && r.height > 20 && st.display !== 'none' && st.visibility !== 'hidden';
+                  };
+                  const sels = [
+                    'textarea:not([disabled])',
+                    '[role="textbox"] textarea:not([disabled])',
+                    'div[contenteditable="true"]',
+                    'div[contenteditable="plaintext-only"]',
+                    '[role="textbox"][contenteditable="true"]',
+                    '[role="textbox"]'
+                  ];
+                  const list = [];
+                  for (const sel of sels) {
+                    document.querySelectorAll(sel).forEach(el => {
+                      if (isVisible(el)) list.push(el);
+                    });
+                  }
+                  const target = list.length ? list[list.length - 1] : null;
+                  if (!target) return;
+                  target.scrollIntoView({ block: 'center', inline: 'nearest' });
+                  target.focus();
+                  const tag = (target.tagName || '').toLowerCase();
+                  if (tag === 'textarea' || tag === 'input') {
+                    target.value = '';
+                    target.dispatchEvent(new Event('input', { bubbles: true }));
+                    target.value = value;
+                    target.dispatchEvent(new Event('input', { bubbles: true }));
+                    target.dispatchEvent(new Event('change', { bubbles: true }));
+                  } else {
+                    target.textContent = '';
+                    target.dispatchEvent(new Event('input', { bubbles: true }));
+                    target.textContent = value;
+                    target.dispatchEvent(new InputEvent('input', { bubbles: true, data: value, inputType: 'insertText' }));
+                  }
+                }
+                """, text);
+        } catch (Exception e) {
+            log.debug("[Yuanbao] DOM 回填异常: {}", e.getMessage());
+        }
+    }
+
     private Locator findPrimaryInput(Page page) {
         String[] selectors = {
             "textarea[placeholder*='发']",
@@ -458,7 +557,7 @@ public class YuanbaoUtil {
         return null;
     }
 
-    private String waitForAssistantReply(Page page) {
+    private String waitForAssistantReply(Page page, String userQuery) {
         long start = System.currentTimeMillis();
         long maxWait = 300000;
         String last = "";
@@ -490,7 +589,7 @@ public class YuanbaoUtil {
                 continue;
             }
 
-            String text = extractLatestAssistantText(page);
+            String text = extractLatestAssistantText(page, userQuery);
             if (text != null && !text.trim().isEmpty()) {
                 if (text.equals(last)) {
                     stable++;
@@ -505,7 +604,7 @@ public class YuanbaoUtil {
             page.waitForTimeout(500);
         }
 
-        String fallback = extractLatestAssistantText(page);
+        String fallback = extractLatestAssistantText(page, userQuery);
         if (fallback != null && !fallback.trim().isEmpty()) {
             return fallback.trim();
         }
@@ -531,25 +630,10 @@ public class YuanbaoUtil {
         }
     }
 
-    private String extractLatestAssistantText(Page page) {
+    private String extractLatestAssistantText(Page page, String userQuery) {
         try {
-            Object o = page.evaluate("""
-                () => {
-                  const candidates = [];
-                  document.querySelectorAll('[class*="message"], [class*="Message"], [data-role="assistant"]').forEach(el => {
-                    const t = (el.innerText || '').trim();
-                    if (t.length > 5) candidates.push(t);
-                  });
-                  if (candidates.length > 0) return candidates[candidates.length - 1];
-                  let best = '';
-                  document.querySelectorAll('article, [class*="markdown"], [class*="Markdown"]').forEach(el => {
-                    const t = (el.innerText || '').trim();
-                    if (t.length > best.length) best = t;
-                  });
-                  return best || '';
-                }
-                """);
-            return o != null ? o.toString() : null;
+            String s = AssistantReplyTextExtractor.extractLatestAssistantPlainText(page, userQuery);
+            return (s == null || s.isBlank()) ? null : s;
         } catch (Exception e) {
             log.debug("[Yuanbao] 提取正文失败: {}", e.getMessage());
             return null;

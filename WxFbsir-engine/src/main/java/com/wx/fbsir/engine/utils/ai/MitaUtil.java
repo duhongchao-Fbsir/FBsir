@@ -4,6 +4,7 @@ import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.LoadState;
 import com.microsoft.playwright.options.WaitUntilState;
+import com.wx.fbsir.engine.playwright.util.AssistantReplyTextExtractor;
 import com.wx.fbsir.engine.utils.common.FileDownloadUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -181,15 +182,16 @@ public class MitaUtil {
         page.waitForLoadState(LoadState.DOMCONTENTLOADED);
         page.waitForTimeout(500);
 
-        String baselineReply = extractLatestAssistantText(page);
+        String q = query.trim();
+        String baselineReply = extractLatestAssistantText(page, null);
         String promptSignal = buildPromptSignal(query);
         int promptCountBefore = countPromptOccurrences(page, promptSignal);
 
-        if (!fillAndSend(page, query.trim())) {
+        if (!fillAndSend(page, q)) {
             throw new RuntimeException("未找到输入框或发送失败");
         }
 
-        return waitForAssistantReply(page, baselineReply, promptSignal, promptCountBefore);
+        return waitForAssistantReply(page, baselineReply, promptSignal, promptCountBefore, q);
     }
 
     private boolean fillAndSend(Page page, String text) {
@@ -200,8 +202,7 @@ public class MitaUtil {
         try {
             input.click();
             page.waitForTimeout(200);
-            input.fill("");
-            input.fill(text);
+            AssistantReplyTextExtractor.fillComposerUtf8(input, text);
             page.waitForTimeout(200);
 
             String[] sendSelectors = {
@@ -254,7 +255,8 @@ public class MitaUtil {
         return null;
     }
 
-    private String waitForAssistantReply(Page page, String baselineReply, String promptSignal, int promptCountBefore) {
+    private String waitForAssistantReply(Page page, String baselineReply, String promptSignal, int promptCountBefore,
+                                         String userQuery) {
         long start = System.currentTimeMillis();
         long maxWait = 150000;
         String last = "";
@@ -271,7 +273,7 @@ public class MitaUtil {
                 continue;
             }
 
-            String text = extractLatestAssistantText(page);
+            String text = extractLatestAssistantText(page, userQuery);
             if (text != null && !text.trim().isEmpty()) {
                 boolean looksLikeBaseline = sameReply(text, baselineReply);
                 int promptCountAfter = countPromptOccurrences(page, promptSignal);
@@ -297,7 +299,7 @@ public class MitaUtil {
             page.waitForTimeout(500);
         }
 
-        String fallback = extractLatestAssistantText(page);
+        String fallback = extractLatestAssistantText(page, userQuery);
         boolean promptMovedAtEnd = countPromptOccurrences(page, promptSignal) > promptCountBefore;
         if (fallback != null && !fallback.trim().isEmpty()
             && promptMovedAtEnd
@@ -375,25 +377,10 @@ public class MitaUtil {
         }
     }
 
-    private String extractLatestAssistantText(Page page) {
+    private String extractLatestAssistantText(Page page, String userQuery) {
         try {
-            Object o = page.evaluate("""
-                () => {
-                  const candidates = [];
-                  document.querySelectorAll('[class*="answer"], [class*="Answer"], [class*="content"], article').forEach(el => {
-                    const t = (el.innerText || '').trim();
-                    if (t.length > 20) candidates.push(t);
-                  });
-                  if (candidates.length > 0) return candidates[candidates.length - 1];
-                  let best = '';
-                  document.querySelectorAll('article, [class*="markdown"], [class*="Markdown"]').forEach(el => {
-                    const t = (el.innerText || '').trim();
-                    if (t.length > best.length) best = t;
-                  });
-                  return best || '';
-                }
-                """);
-            return o != null ? o.toString() : null;
+            String s = AssistantReplyTextExtractor.extractLatestAssistantPlainText(page, userQuery);
+            return (s == null || s.isBlank()) ? null : s;
         } catch (Exception e) {
             log.debug("[秘塔] 提取正文失败: {}", e.getMessage());
             return null;

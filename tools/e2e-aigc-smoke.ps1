@@ -19,9 +19,7 @@ if ($env:E2E_ONE -eq '1') {
     @{ id = 'deepseek'; type = 'AI_DEEPSEEK_QUERY' },
     @{ id = 'doubao'; type = 'AI_DOUBAO_QUERY' },
     @{ id = 'qianwen'; type = 'AI_QIANWEN_QUERY' },
-    @{ id = 'yuanbao'; type = 'AI_YUANBAO_QUERY' },
-    @{ id = 'mita'; type = 'AI_MITA_QUERY' },
-    @{ id = 'gitee'; type = 'AI_GITEE_QUERY' }
+    @{ id = 'yuanbao'; type = 'AI_YUANBAO_QUERY' }
   )
 }
 

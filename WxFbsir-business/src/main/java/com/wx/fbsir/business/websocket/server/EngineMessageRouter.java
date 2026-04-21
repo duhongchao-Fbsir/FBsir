@@ -493,6 +493,17 @@ public class EngineMessageRouter {
             }
             return out;
         }
+        if (raw instanceof String s && !s.isEmpty()) {
+            try {
+                com.alibaba.fastjson2.JSONObject jo = JSON.parseObject(s);
+                if (jo != null && !jo.isEmpty()) {
+                    return jo;
+                }
+            } catch (Exception ex) {
+                log.warn("[AI存储] payload.data JSON 字符串解析失败: {}", ex.getMessage());
+            }
+            return null;
+        }
         log.warn("[AI存储] payload.data 非 Map，已忽略 - type={}", raw.getClass().getName());
         return null;
     }

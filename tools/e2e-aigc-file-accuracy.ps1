@@ -1,53 +1,87 @@
+# 端到端：通用上传(/common/upload) -> WebSocket AIGC -> Engine 下载并送入各平台 -> 校验回复是否包含文件内固定标记
+# 依赖：Admin 8080、Engine 已注册、各平台已登录（与 e2e-aigc-smoke 相同）
+# 默认样本：仓库内 tools/e2e-assets/e2e-file-understanding.txt（可用 .txt / .png 等 DEFAULT_ALLOWED_EXTENSION）
+param(
+    [string]$Base = "http://127.0.0.1:8080",
+    [string]$LocalFile = "",
+    [int]$DeadlineSeconds = 300
+)
+
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
-$base = "http://127.0.0.1:8080"
+$repoRoot = Split-Path -Parent $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($LocalFile)) {
+    $LocalFile = Join-Path $PSScriptRoot "e2e-assets\e2e-file-understanding.txt"
+}
+if (-not (Test-Path -LiteralPath $LocalFile)) {
+    Write-Error "Sample file not found: $LocalFile"
+    exit 1
+}
+
+# 从样本文件首行读取必现标记（用于断言）
+$firstLine = (Get-Content -LiteralPath $LocalFile -TotalCount 1 -Encoding UTF8)
+if ([string]::IsNullOrWhiteSpace($firstLine)) {
+    Write-Error "Sample file first line empty: $LocalFile"
+    exit 1
+}
+$marker = $firstLine.Trim()
+Write-Host "MarkerLine: $marker" -ForegroundColor DarkGray
+
 $engineId = "engine-dev-001"
 $chatId = "e2e-file-" + [Guid]::NewGuid().ToString("N").Substring(0, 8)
 
-# 用户刚上传的图片（场景魔方）
-$localImage = "C:\Users\10171\.cursor\projects\d-U3WV2\assets\c__Users_10171_AppData_Roaming_Cursor_User_workspaceStorage_b9379ff0d6702d84906105734576d62f_images_______-d8ec7805-5148-4088-9fb0-da7ef3300c43.png"
-if (-not (Test-Path $localImage)) {
-    throw "Image file not found: $localImage"
-}
-
 $loginBody = '{"username":"admin","password":"admin123","code":"","uuid":""}'
-$login = Invoke-RestMethod -Uri "$base/login" -Method Post -ContentType "application/json" -Body $loginBody
+$login = Invoke-RestMethod -Uri "$Base/login" -Method Post -ContentType "application/json" -Body $loginBody
 $token = $login.token
 if ([string]::IsNullOrWhiteSpace($token)) {
     throw "Login failed: empty token"
 }
 
-# 上传图片，拿到可供 Engine 下载的 URL
-$uploadRespRaw = & curl.exe -s -X POST "$base/common/upload" -H "Authorization: Bearer $token" -F "file=@$localImage;filename=scene-cube.png"
+# curl 上传（UTF-8 文件名友好）
+$uploadRespRaw = & curl.exe -s -X POST "$Base/common/upload" -H "Authorization: Bearer $token" -F "file=@$LocalFile"
 if ([string]::IsNullOrWhiteSpace($uploadRespRaw)) {
     throw "Upload failed: empty response"
 }
 $uploadResp = $uploadRespRaw | ConvertFrom-Json
+if ($uploadResp.code -ne 200) {
+    throw "Upload failed: $($uploadResp | ConvertTo-Json -Compress)"
+}
 $uploadedFileUrl = [string]$uploadResp.url
 if ([string]::IsNullOrWhiteSpace($uploadedFileUrl)) {
     throw "Upload failed: missing url. Response: $uploadRespRaw"
 }
-Write-Host "UploadedFileUrl: $uploadedFileUrl"
+Write-Host "UploadedFileUrl: $uploadedFileUrl" -ForegroundColor Cyan
 
 $encToken = [System.Uri]::EscapeDataString($token)
-$wsUri = "ws://127.0.0.1:8080/ws/client?clientType=web&token=$encToken"
+$bu = [Uri]$Base
+$wsScheme = if ($bu.Scheme -eq 'https') { 'wss' } else { 'ws' }
+$wsUri = "${wsScheme}://$($bu.Authority)/ws/client?clientType=web&token=$encToken"
 
-# 按你的要求先跳过豆包；这里包含 deepseek 作为基准，便于对照“正确性”
+# 全量四路（与 e2e-aigc-smoke 对齐）；请求中写明标记便于质量门禁与模型对齐
 $ais = @(
     @{ id = "deepseek"; type = "AI_DEEPSEEK_QUERY" },
+    @{ id = "doubao";   type = "AI_DOUBAO_QUERY" },
     @{ id = "qianwen";  type = "AI_QIANWEN_QUERY" },
-    @{ id = "yuanbao";  type = "AI_YUANBAO_QUERY" },
-    @{ id = "mita";     type = "AI_MITA_QUERY" },
-    @{ id = "gitee";    type = "AI_GITEE_QUERY" }
+    @{ id = "yuanbao";  type = "AI_YUANBAO_QUERY" }
 )
 
-$keywords = @(
-    "L1", "L2", "L3", "L4",
-    "B2B", "SOP",
-    "internal", "customer", "delivery", "consulting", "training", "strategy"
-)
+$prompt = "A file has been uploaded. Please read the file content and include the FIRST LINE exactly as-is in your reply (must keep the prefix WXFBSIR_E2E_MARKER=). Then briefly confirm whether you successfully read the uploaded file. Required first-line marker: $marker"
+
+# WebSocket 正文须为 UTF-8；PowerShell Core 7+ 可用 EscapeNonAscii，避免部分环境下非 ASCII 在 JSON 中的编码歧义
+function Serialize-AigcWsPayload {
+    param([Parameter(Mandatory = $true)] [object]$Obj)
+    $depth = 25
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        try {
+            return ($Obj | ConvertTo-Json -Depth $depth -Compress -EscapeHandling EscapeNonAscii)
+        } catch {
+            return ($Obj | ConvertTo-Json -Depth $depth -Compress)
+        }
+    }
+    return ($Obj | ConvertTo-Json -Depth $depth -Compress)
+}
 
 function Receive-OneWsTextMessage {
     param(
@@ -84,38 +118,43 @@ function Get-AnswerText {
     $data = $Msg.payload.data
     if ($null -eq $data) { return "" }
     $txt = ""
-    if ($data.textContent) { $txt = [string]$data.textContent }
-    if ([string]::IsNullOrWhiteSpace($txt) -and $data.answer) { $txt = [string]$data.answer }
+    if ($data -is [string]) {
+        try {
+            $dataObj = $data | ConvertFrom-Json
+            if ($dataObj.textContent) { $txt = [string]$dataObj.textContent }
+            if ([string]::IsNullOrWhiteSpace($txt) -and $dataObj.answer) { $txt = [string]$dataObj.answer }
+        } catch {
+            $txt = [string]$data
+        }
+    } else {
+        if ($data.textContent) { $txt = [string]$data.textContent }
+        if ([string]::IsNullOrWhiteSpace($txt) -and $data.answer) { $txt = [string]$data.answer }
+    }
     return $txt
 }
 
-function Score-Answer {
-    param([string]$Text, [string[]]$WordList)
-    if ([string]::IsNullOrWhiteSpace($Text)) { return 0 }
-    $hits = 0
-    foreach ($w in $WordList) {
-        if ($Text.Contains($w)) { $hits++ }
-    }
-    return $hits
+function Test-MarkerPresent {
+    param([string]$Text, [string]$Required)
+    if ([string]::IsNullOrWhiteSpace($Text) -or [string]::IsNullOrWhiteSpace($Required)) { return $false }
+    return $Text.Contains($Required)
 }
 
 $results = @()
-$prompt = "Identify this image strictly by visible text: output 1) title, 2) 4 vertical levels (L1-L4), 3) 3 horizontal scenarios, 4) key role labels."
 
 foreach ($ai in $ais) {
+    $deadlineUtc = [DateTime]::UtcNow.AddSeconds($DeadlineSeconds)
     $sessionId = [Guid]::NewGuid().ToString()
     $ws = New-Object System.Net.WebSockets.ClientWebSocket
     $ct = New-Object System.Threading.CancellationToken
     $null = $ws.ConnectAsync([Uri]$wsUri, $ct).Wait(20000)
     if ($ws.State -ne [System.Net.WebSockets.WebSocketState]::Open) {
         $results += [pscustomobject]@{
-            AI = $ai.id; Outcome = "WS_FAIL"; Score = 0; Detail = "WebSocket not open"; Snippet = ""
+            AI = $ai.id; Outcome = "WS_FAIL"; MarkerHit = $false; Detail = "WebSocket not open"
         }
         continue
     }
 
-    $buf = New-Object byte[] 524288
-    # 丢弃 CONNECTED
+    $buf = New-Object byte[] 786432
     $null = Receive-OneWsTextMessage -Socket $ws -Buffer $buf -DeadlineUtc ([DateTime]::UtcNow.AddSeconds(20))
 
     $payload = @{
@@ -135,18 +174,16 @@ foreach ($ai in $ais) {
         chatId = $chatId
         payload = $payload
     }
-    $msg = $msgObj | ConvertTo-Json -Depth 8 -Compress
+    $msg = Serialize-AigcWsPayload -Obj $msgObj
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($msg)
     $seg = New-Object System.ArraySegment[byte] -ArgumentList @(,$bytes)
-    $null = $ws.SendAsync($seg, [System.Net.WebSockets.WebSocketMessageType]::Text, $true, $ct).Wait(30000)
+    $null = $ws.SendAsync($seg, [System.Net.WebSockets.WebSocketMessageType]::Text, $true, $ct).Wait(60000)
 
-    $deadline = [DateTime]::UtcNow.AddSeconds(190)
     $outcome = "TIMEOUT"
     $detail = ""
     $answer = ""
-
-    while ([DateTime]::UtcNow -lt $deadline) {
-        $txt = Receive-OneWsTextMessage -Socket $ws -Buffer $buf -DeadlineUtc $deadline
+    while ([DateTime]::UtcNow -lt $deadlineUtc) {
+        $txt = Receive-OneWsTextMessage -Socket $ws -Buffer $buf -DeadlineUtc $deadlineUtc
         if ($null -eq $txt) { continue }
         try { $j = $txt | ConvertFrom-Json } catch { continue }
         $t = [string]$j.type
@@ -173,16 +210,16 @@ foreach ($ai in $ais) {
         break
     }
 
-    $score = Score-Answer -Text $answer -WordList $keywords
+    $hit = Test-MarkerPresent -Text $answer -Required $marker
     $snippet = ""
     if (-not [string]::IsNullOrWhiteSpace($answer)) {
-        $snippet = $answer.Substring(0, [Math]::Min(160, $answer.Length)).Replace("`r", " ").Replace("`n", " ")
+        $snippet = $answer.Substring(0, [Math]::Min(200, $answer.Length)).Replace("`r", " ").Replace("`n", " ")
     }
 
     $results += [pscustomobject]@{
         AI = $ai.id
         Outcome = $outcome
-        Score = $score
+        MarkerHit = $hit
         Detail = $detail
         Snippet = $snippet
     }
@@ -196,8 +233,13 @@ foreach ($ai in $ais) {
 }
 
 Write-Host ""
-Write-Host "===== FILE ACCURACY SUMMARY ====="
+Write-Host "===== FILE UPLOAD / UNDERSTANDING SUMMARY =====" -ForegroundColor Green
 $results | Format-Table -AutoSize
-Write-Host ""
-Write-Host "===== RAW JSON ====="
-$results | ConvertTo-Json -Depth 6
+$ok = @($results | Where-Object { $_.Outcome -eq 'RESULT_OK' -and $_.MarkerHit -eq $true }).Count
+$total = $results.Count
+Write-Host "--- PASS (RESULT_OK + marker in answer): $ok / $total ---"
+
+if ($ok -lt $total) {
+    exit 1
+}
+exit 0

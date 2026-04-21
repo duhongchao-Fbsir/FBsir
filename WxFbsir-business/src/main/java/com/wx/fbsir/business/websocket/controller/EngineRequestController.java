@@ -98,6 +98,12 @@ public class EngineRequestController {
         if (type == null || type.isEmpty()) {
             return ResponseEntity.ok(buildError("INVALID_PARAM", "缺少 type 参数"));
         }
+        if (isOffShelfType(type)) {
+            return ResponseEntity.ok(buildError(
+                "SERVICE_OFF_SHELF",
+                "秘塔与 Gitee AI 服务已下架，当前不可用。请改用 DeepSeek / 豆包 / 千问 / 元宝。"
+            ));
+        }
         
         // 2. 检查Engine是否在线
         EngineSession session = sessionManager.getSessionByEngineId(engineId);
@@ -252,5 +258,14 @@ public class EngineRequestController {
         error.put("errorMessage", errorMessage);
         error.put("timestamp", System.currentTimeMillis());
         return error;
+    }
+
+    private boolean isOffShelfType(String type) {
+        return type != null && (
+            type.startsWith("AI_MITA_")
+                || type.startsWith("MITA_")
+                || type.startsWith("AI_GITEE_")
+                || type.startsWith("GITEE_")
+        );
     }
 }

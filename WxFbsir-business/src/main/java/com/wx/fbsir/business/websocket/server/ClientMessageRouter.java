@@ -97,6 +97,19 @@ public class ClientMessageRouter {
             JSONObject json = JSON.parseObject(rawMessage);
             String type = json.getString("type");
             String userId = extractUserId(clientId);
+
+            if (isOffShelfType(type)) {
+                sendAiTaskError(
+                    clientId,
+                    userId,
+                    type,
+                    "N/A",
+                    "服务已下架",
+                    "秘塔与 Gitee AI 服务已下架，当前不可用。请使用 DeepSeek / 豆包 / 千问 / 元宝。"
+                );
+                log.warn("[Router] 已拦截下架能力请求 - 用户: {}, 类型: {}", userId, type);
+                return;
+            }
             
             // ━━━━━━━━━━ 获取 engineId（必须指定）━━━━━━━━━━
             String engineId = json.getString("engineId");
@@ -353,6 +366,16 @@ public class ClientMessageRouter {
             return clientId.substring(5);
         }
         return clientId;
+    }
+
+    private boolean isOffShelfType(String type) {
+        if (type == null || type.isEmpty()) {
+            return false;
+        }
+        return type.startsWith("AI_MITA_")
+            || type.startsWith("MITA_")
+            || type.startsWith("AI_GITEE_")
+            || type.startsWith("GITEE_");
     }
 
     /**

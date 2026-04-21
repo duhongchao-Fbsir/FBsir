@@ -63,6 +63,12 @@ import java.util.function.Consumer;
 public class CapabilityRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(CapabilityRegistry.class);
+    private static final Set<String> OFF_SHELF_TYPE_PREFIXES = Set.of(
+        "GITEE_",
+        "AI_GITEE_",
+        "MITA_",
+        "AI_MITA_"
+    );
 
     @Autowired
     private ApplicationContext context;
@@ -92,16 +98,12 @@ public class CapabilityRegistry {
     private void registerLegacyCapabilityAliases() {
         registerAliasIfMissing("AI_DEEPSEEK_CHECK_LOGIN", "DEEPSEEK_CHECK_LOGIN");
         registerAliasIfMissing("AI_DEEPSEEK_SCAN_LOGIN", "DEEPSEEK_SCAN_LOGIN");
-        registerAliasIfMissing("AI_GITEE_CHECK_LOGIN", "GITEE_CHECK_LOGIN");
-        registerAliasIfMissing("AI_GITEE_SCAN_LOGIN", "GITEE_SCAN_LOGIN");
         registerAliasIfMissing("AI_DOUBAO_CHECK_LOGIN", "DOUBAO_CHECK_LOGIN");
         registerAliasIfMissing("AI_DOUBAO_SCAN_LOGIN", "DOUBAO_SCAN_LOGIN");
         registerAliasIfMissing("AI_QIANWEN_CHECK_LOGIN", "QIANWEN_CHECK_LOGIN");
         registerAliasIfMissing("AI_QIANWEN_SCAN_LOGIN", "QIANWEN_SCAN_LOGIN");
         registerAliasIfMissing("AI_YUANBAO_CHECK_LOGIN", "YUANBAO_CHECK_LOGIN");
         registerAliasIfMissing("AI_YUANBAO_SCAN_LOGIN", "YUANBAO_SCAN_LOGIN");
-        registerAliasIfMissing("AI_MITA_CHECK_LOGIN", "MITA_CHECK_LOGIN");
-        registerAliasIfMissing("AI_MITA_SCAN_LOGIN", "MITA_SCAN_LOGIN");
     }
 
     private void registerAliasIfMissing(String aliasType, String primaryType) {
@@ -153,6 +155,9 @@ public class CapabilityRegistry {
                 if (streamAnnotation != null) {
                     String type = streamAnnotation.type();
                     String description = streamAnnotation.description();
+                    if (isOffShelfType(type)) {
+                        continue;
+                    }
                     
                     // 注册流式处理器（如果已存在则跳过）
                     if (!handlers.containsKey(type)) {
@@ -166,6 +171,9 @@ public class CapabilityRegistry {
                 if (onceAnnotation != null) {
                     String type = onceAnnotation.type();
                     String description = onceAnnotation.description();
+                    if (isOffShelfType(type)) {
+                        continue;
+                    }
                     
                     // 注册单次处理器（如果已存在则跳过）
                     if (!handlers.containsKey(type)) {
@@ -200,6 +208,19 @@ public class CapabilityRegistry {
         } catch (Exception e) {
             System.err.println("[能力注册] 注册失败: " + type + " -> " + beanName + "." + methodName + ", 错误: " + e.getMessage());
         }
+    }
+
+    private boolean isOffShelfType(String type) {
+        if (type == null || type.isBlank()) {
+            return false;
+        }
+        String normalized = type.toUpperCase(Locale.ROOT);
+        for (String prefix : OFF_SHELF_TYPE_PREFIXES) {
+            if (normalized.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public MessageHandler getHandler(String type) {

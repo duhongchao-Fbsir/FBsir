@@ -12,13 +12,6 @@ export const AI_CAPABILITY_MATRIX = {
     multiMode: true,
     supportedOptionIds: ['enableDeepThinking', 'enableWebSearch', 'enableFileUpload', 'enableFastMode', 'enableExpertMode']
   },
-  gitee: {
-    reasoning: false,
-    webSearch: false,
-    fileUpload: true,
-    multiMode: true,
-    supportedOptionIds: ['openSourceExploration', 'repositoryQA', 'helpCenter', 'enableFileUpload']
-  },
   doubao: {
     reasoning: true,
     webSearch: false,
@@ -39,13 +32,6 @@ export const AI_CAPABILITY_MATRIX = {
     fileUpload: true,
     multiMode: false,
     supportedOptionIds: ['enableFileUpload']
-  },
-  mita: {
-    reasoning: false,
-    webSearch: false,
-    fileUpload: true,
-    multiMode: false,
-    supportedOptionIds: ['enableFileUpload']
   }
 }
 
@@ -57,12 +43,6 @@ function resolveConversationProfile(aiId, aiOptions, providerOptions) {
     if (aiOptions.enableDeepThinking) return 'deepThinking'
     if (aiOptions.enableWebSearch) return 'webSearch'
     return 'default'
-  }
-  if (aiId === 'gitee') {
-    if (aiOptions.openSourceExploration) return 'openSourceExploration'
-    if (aiOptions.repositoryQA) return 'repositoryQA'
-    if (aiOptions.helpCenter) return 'helpCenter'
-    return providerOptions?.conversationProfile || 'default'
   }
   if (aiId === 'doubao') {
     if (aiOptions.enableFastMode) return 'fast'

@@ -62,10 +62,7 @@ public class AigcController extends BaseController {
     /**
      * 通用AI请求处理接口
      * 
-     * 支持的请求类型（与 Engine 能力名一致；登录类为 DEEPSEEK_* / GITEE_*，咨询为 AI_*_QUERY）：
-     * - DEEPSEEK_CHECK_LOGIN / GITEE_CHECK_LOGIN: 登录检查
-     * - DEEPSEEK_SCAN_LOGIN / GITEE_SCAN_LOGIN: 扫码登录
-     * - AI_DEEPSEEK_QUERY / AI_GITEE_QUERY: AI 咨询
+     * 支持的请求类型（与 Engine 能力名一致；登录类为 *_CHECK_LOGIN / *_SCAN_LOGIN，咨询为 AI_*_QUERY）。
      * 
      * @param aiRequest AI请求对象
      * @return 处理结果

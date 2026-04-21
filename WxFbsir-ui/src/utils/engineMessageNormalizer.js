@@ -13,11 +13,9 @@ export function inferAiTypeFromMessageType(messageType) {
   }
   const u = messageType.toUpperCase()
   if (u.startsWith('AI_DEEPSEEK')) return 'deepseek'
-  if (u.startsWith('AI_GITEE')) return 'gitee'
   if (u.startsWith('AI_DOUBAO')) return 'doubao'
   if (u.startsWith('AI_QIANWEN') || u.startsWith('AI_TONGYI')) return 'qianwen'
   if (u.startsWith('AI_YUANBAO')) return 'yuanbao'
-  if (u.startsWith('AI_MITA')) return 'mita'
   return ''
 }
 
@@ -36,8 +34,19 @@ export function inferAiTypeFromMessageType(messageType) {
  * }}
  */
 export function normalizeEngineInboundMessage(message) {
-  const payload = message.payload || {}
-  const payloadData = payload.data || {}
+  const payload = message.payload != null ? { ...message.payload } : {}
+  // Fastjson/Spring 在少数路径下会把嵌套对象序列成 JSON 字符串；未解析时中文会像「乱码链」一样错位显示
+  if (typeof payload.data === 'string') {
+    try {
+      const parsed = JSON.parse(payload.data)
+      payload.data = parsed
+    } catch (e) {
+      /* 保持原样，由业务侧兜底 */
+    }
+  }
+  const rawData = payload.data
+  const payloadData =
+    rawData != null && typeof rawData === 'object' && !Array.isArray(rawData) ? rawData : {}
   const messageType = message.messageType || message.type
   let aiType = payload.aiType || payloadData.aiType || ''
   if (!aiType || aiType === 'unknown') {

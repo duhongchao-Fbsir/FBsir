@@ -151,11 +151,6 @@ function resolveServiceIdFromCheckLoginPayload(payload, messageType) {
       if (byId) return byId.id
     }
   }
-  const platform = (payload.data && (payload.data.platform ?? payload.data.Platform)) || payload.platform
-  if (platform != null) {
-    const p = String(platform).toLowerCase()
-    if (p.includes('mita') || p.includes('秘塔') || p.includes('metaso')) return 'mita'
-  }
   if (messageType && String(messageType).includes('CHECK_LOGIN')) {
     const byMsg = ENGINE_CONFIGS.find(c => c.messageTypes?.checkLogin === messageType)
     if (byMsg) return byMsg.id

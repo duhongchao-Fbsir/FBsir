@@ -66,6 +66,15 @@
     5) set WXFBSIR_SKIP_LOCAL_DEPS=1
        然后: .\tools\start-jar.ps1 或 .\tools\start-admin.ps1
 
+四、文件上传与内容理解（端到端）
+  依赖 Admin+Engine 与各 AI 平台已登录（与 tools\e2e-aigc-smoke.ps1 相同）。
+  仓库根目录执行：
+    .\tools\e2e-aigc-file-accuracy.ps1
+  默认上传 tools\e2e-assets\e2e-file-understanding.txt，并校验四路模型回复是否包含文件首行标记。
+  可选参数示例：
+    -LocalFile "D:\path\sample.png"   使用自定义样本（须为 /common/upload 允许的类型）
+    -DeadlineSeconds 420              单路 AI 最长等待秒数
+
 故障排查
   - 3306 被占用: 修改本机 MySQL 端口或改 WXFBSIR_MYSQL_URL
   - Docker 数据卷已损坏: docker compose down -v 后重新 up（会丢库内数据）

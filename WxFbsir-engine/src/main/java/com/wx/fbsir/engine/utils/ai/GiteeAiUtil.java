@@ -4,6 +4,7 @@ import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.LoadState;
 import com.microsoft.playwright.options.WaitUntilState;
+import com.wx.fbsir.engine.playwright.util.AssistantReplyTextExtractor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -712,15 +713,25 @@ public class GiteeAiUtil {
             }
             
             log.info("⏳ [Gitee AI] 开始监听回复");
-            String content = waitForResponse(page);
+            String content = waitForResponse(page, query);
             
             if (content != null && !content.isEmpty()) {
                 log.info("✅ [Gitee AI] 回复接收完成，内容长度: {}", content.length());
                 return content;
-            } else {
-                log.error("❌ [Gitee AI] 未能获取有效回复");
-                return null;
             }
+            log.warn("❌ [Gitee AI] 首次未能获取有效回复，等待后重试提取一次");
+            try {
+                page.waitForTimeout(5000);
+                String retry = extractGiteeResponse(page, query);
+                if (retry != null && !retry.trim().isEmpty()) {
+                    log.info("✅ [Gitee AI] 重试提取成功，长度: {}", retry.length());
+                    return retry.trim();
+                }
+            } catch (Exception re) {
+                log.debug("[Gitee AI] 重试提取异常: {}", re.getMessage());
+            }
+            log.error("❌ [Gitee AI] 未能获取有效回复");
+            return null;
             
         } catch (Exception e) {
             log.error("❌ [Gitee AI] 发送消息失败: {}", e.getMessage(), e);
@@ -1175,11 +1186,7 @@ public class GiteeAiUtil {
             if (inputFound && inputBox != null) {
                 inputBox.click();
                 page.waitForTimeout(500);
-                
-                inputBox.fill("");
-                page.waitForTimeout(200);
-                
-                inputBox.fill(query);
+                AssistantReplyTextExtractor.fillComposerUtf8(inputBox, query);
                 log.debug("✅ [Gitee AI] 问题已填入输入框");
                 
                 // 点击发送按钮
@@ -1317,7 +1324,7 @@ public class GiteeAiUtil {
      * @param page Playwright页面实例
      * @return 获取的回答内容
      */
-    private String waitForResponse(Page page) {
+    private String waitForResponse(Page page, String userQuery) {
         try {
             // 🔥 改进的等待逻辑：持续检测内容稳定性
             String currentContent = "";
@@ -1348,12 +1355,25 @@ public class GiteeAiUtil {
                 }
                 
                 try {
-                    // 提取当前内容
-                    Locator proseContainer = page.locator(".n-prose, .prose-borderless, [class*='prose']").last();
-                    if (proseContainer.count() > 0) {
-                        currentContent = proseContainer.textContent().trim();
+                    // 提取当前内容（优先 prose；新版页面可能仅有助手气泡无该类名）
+                    String proseText = "";
+                    try {
+                        Locator proseContainer = page.locator(".n-prose, .prose-borderless, [class*='prose']").last();
+                        if (proseContainer.count() > 0) {
+                            proseText = proseContainer.textContent() != null ? proseContainer.textContent().trim() : "";
+                        }
+                    } catch (Exception ignore) {
+                        // ignore
                     }
-                    
+                    String assistantPlain = AssistantReplyTextExtractor.extractLatestAssistantPlainText(page, userQuery);
+                    if (proseText != null && !proseText.isEmpty()) {
+                        currentContent = proseText;
+                    } else if (assistantPlain != null && !assistantPlain.isEmpty()) {
+                        currentContent = assistantPlain;
+                    } else {
+                        currentContent = "";
+                    }
+
                     int contentLength = currentContent.length();
                     
                     if (contentLength > 0) {
@@ -1412,7 +1432,7 @@ public class GiteeAiUtil {
             
             // 提取 AI 回复内容
             log.info("📝 [Gitee AI] 开始提取回复内容");
-            String aiResponse = extractGiteeResponse(page);
+            String aiResponse = extractGiteeResponse(page, userQuery);
             
             if (aiResponse != null && !aiResponse.isEmpty()) {
                 log.info("✅ [Gitee AI] 成功获取 AI 回复，长度: {}", aiResponse.length());
@@ -1436,7 +1456,7 @@ public class GiteeAiUtil {
      * @param page Playwright页面对象
      * @return 格式化后的回复内容
      */
-    private String extractGiteeResponse(Page page) {
+    private String extractGiteeResponse(Page page, String userQuery) {
         try {
             log.debug("[Gitee AI] 开始提取格式化的回复内容");
             
@@ -1498,7 +1518,14 @@ public class GiteeAiUtil {
                 }
             }
             
-            log.warn("[Gitee AI] 策略1失败，尝试备用策略");
+            log.warn("[Gitee AI] 策略1失败，尝试助手纯文本 / 备用策略");
+            String assistantPlain = AssistantReplyTextExtractor.extractLatestAssistantPlainText(page, userQuery);
+            if (assistantPlain != null && !assistantPlain.trim().isEmpty()) {
+                log.debug("[Gitee AI] 通过助手纯文本提取成功");
+                return assistantPlain.trim();
+            }
+
+            log.warn("[Gitee AI] 助手纯文本为空，尝试备用策略");
             
             // 策略2：通过 content-wrapper 提取
             Object fallbackResult = page.evaluate("""

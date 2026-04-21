@@ -8,6 +8,7 @@ import com.wx.fbsir.engine.utils.common.FileDownloadUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import com.wx.fbsir.engine.playwright.util.AssistantReplyTextExtractor;
 import org.springframework.stereotype.Component;
 
 import java.util.regex.Matcher;
@@ -428,11 +429,12 @@ public class DoubaoUtil {
 
         toggleThinkingIfNeeded(page, enableDeepThinking);
 
-        if (!fillAndSend(page, query.trim())) {
+        String q = query.trim();
+        if (!fillAndSend(page, q)) {
             throw new RuntimeException("未找到输入框或发送失败");
         }
 
-        return waitForAssistantReply(page);
+        return waitForAssistantReply(page, q);
     }
 
     /**
@@ -571,8 +573,7 @@ public class DoubaoUtil {
         try {
             input.click();
             page.waitForTimeout(300);
-            input.fill("");
-            input.fill(text);
+            AssistantReplyTextExtractor.fillComposerUtf8(input, text);
             page.waitForTimeout(200);
 
             String[] sendSelectors = {
@@ -621,7 +622,7 @@ public class DoubaoUtil {
         return null;
     }
 
-    private String waitForAssistantReply(Page page) {
+    private String waitForAssistantReply(Page page, String userQuery) {
         long start = System.currentTimeMillis();
         long maxWait = 300_000;
         String lastText = "";
@@ -640,7 +641,7 @@ public class DoubaoUtil {
                 continue;
             }
 
-            String text = extractLatestAssistantText(page);
+            String text = extractLatestAssistantText(page, userQuery);
             if (text != null && !text.trim().isEmpty()) {
                 if (text.equals(lastText)) {
                     stable++;
@@ -656,7 +657,7 @@ public class DoubaoUtil {
             page.waitForTimeout(500);
         }
 
-        String fallback = extractLatestAssistantText(page);
+        String fallback = extractLatestAssistantText(page, userQuery);
         if (fallback != null && !fallback.trim().isEmpty()) {
             log.warn("[Doubao] 等待超时，返回最后一次抓取的正文");
             return fallback.trim();
@@ -685,26 +686,10 @@ public class DoubaoUtil {
         }
     }
 
-    private String extractLatestAssistantText(Page page) {
+    private String extractLatestAssistantText(Page page, String userQuery) {
         try {
-            Object o = page.evaluate("""
-                () => {
-                  const candidates = [];
-                  document.querySelectorAll('[class*="message"], [class*="Message"], [data-role="assistant"]').forEach(el => {
-                    const t = (el.innerText || '').trim();
-                    if (t.length > 5) candidates.push(t);
-                  });
-                  if (candidates.length > 0) return candidates[candidates.length - 1];
-                  const articles = document.querySelectorAll('article, [class*="markdown"], [class*="Markdown"]');
-                  let best = '';
-                  articles.forEach(el => {
-                    const t = (el.innerText || '').trim();
-                    if (t.length > best.length) best = t;
-                  });
-                  return best || '';
-                }
-                """);
-            return o != null ? o.toString() : null;
+            String s = AssistantReplyTextExtractor.extractLatestAssistantPlainText(page, userQuery);
+            return (s == null || s.isBlank()) ? null : s;
         } catch (Exception e) {
             log.debug("[Doubao] 提取正文失败: {}", e.getMessage());
             return null;

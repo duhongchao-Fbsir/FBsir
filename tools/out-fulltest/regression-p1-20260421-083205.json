@@ -1,0 +1,219 @@
+﻿{
+    "tier":  "P1",
+    "startTime":  "2026-04-21T08:32:05.1316360+08:00",
+    "endTime":  "2026-04-21T08:44:15.9950127+08:00",
+    "durationSec":  730.86,
+    "runCount":  3,
+    "passCount":  0,
+    "failedCount":  3,
+    "passed":  false,
+    "runs":  [
+                 {
+                     "name":  "p1-ascii-full",
+                     "prompt":  "E2E smoke reply OK only",
+                     "startTime":  "2026-04-21T08:32:05.3299243+08:00",
+                     "endTime":  "2026-04-21T08:36:02.2573445+08:00",
+                     "durationSec":  236.93,
+                     "exitCode":  0,
+                     "summaryFound":  true,
+                     "resultOk":  5,
+                     "resultTotal":  6,
+                     "passed":  false,
+                     "aiResults":  [
+                                       {
+                                           "ai":  "deepseek",
+                                           "sessionId":  "c0437815-e2c6-4441-881c-4fb0b4a04d5a",
+                                           "outcome":  "RESULT_OK",
+                                           "detail":  "",
+                                           "stage":  "finish",
+                                           "errorCategory":  null,
+                                           "aiTypeDetectedFrom":  "smoke-table-row"
+                                       },
+                                       {
+                                           "ai":  "doubao",
+                                           "sessionId":  "40777fd8-ce2a-4415-9f69-b9b83aa06779",
+                                           "outcome":  "RESULT_OK",
+                                           "detail":  "",
+                                           "stage":  "finish",
+                                           "errorCategory":  null,
+                                           "aiTypeDetectedFrom":  "smoke-table-row"
+                                       },
+                                       {
+                                           "ai":  "qianwen",
+                                           "sessionId":  "f2f12cdc-bd33-4266-8bab-56fcdf7e7b3a",
+                                           "outcome":  "RESULT_OK",
+                                           "detail":  "",
+                                           "stage":  "finish",
+                                           "errorCategory":  null,
+                                           "aiTypeDetectedFrom":  "smoke-table-row"
+                                       },
+                                       {
+                                           "ai":  "yuanbao",
+                                           "sessionId":  "57da2c00-0c80-4d80-b9a5-a5e983258ebd",
+                                           "outcome":  "RESULT_OK",
+                                           "detail":  "",
+                                           "stage":  "finish",
+                                           "errorCategory":  null,
+                                           "aiTypeDetectedFrom":  "smoke-table-row"
+                                       },
+                                       {
+                                           "ai":  "mita",
+                                           "sessionId":  "81d13c80-0e52-4beb-8a2a-727059e68604",
+                                           "outcome":  "TIMEOUT",
+                                           "detail":  "",
+                                           "stage":  "execute",
+                                           "errorCategory":  "TASK_TIMEOUT",
+                                           "aiTypeDetectedFrom":  "smoke-table-row"
+                                       },
+                                       {
+                                           "ai":  "gitee",
+                                           "sessionId":  "9e3fa24e-ab39-44c9-b1c7-322b0d49c4ac",
+                                           "outcome":  "RESULT_OK",
+                                           "detail":  "",
+                                           "stage":  "finish",
+                                           "errorCategory":  null,
+                                           "aiTypeDetectedFrom":  "smoke-table-row"
+                                       }
+                                   ],
+                     "logPath":  "tools\\out-fulltest\\p1-ascii-full-20260421-083205.log"
+                 },
+                 {
+                     "name":  "p1-zh-full",
+                     "prompt":  "回归测试：请仅回复OK",
+                     "startTime":  "2026-04-21T08:36:02.4521588+08:00",
+                     "endTime":  "2026-04-21T08:40:01.6834961+08:00",
+                     "durationSec":  239.23,
+                     "exitCode":  0,
+                     "summaryFound":  true,
+                     "resultOk":  5,
+                     "resultTotal":  6,
+                     "passed":  false,
+                     "aiResults":  [
+                                       {
+                                           "ai":  "deepseek",
+                                           "sessionId":  "3559b584-471b-4f48-a86d-04e8d87a7be9",
+                                           "outcome":  "RESULT_OK",
+                                           "detail":  "",
+                                           "stage":  "finish",
+                                           "errorCategory":  null,
+                                           "aiTypeDetectedFrom":  "smoke-table-row"
+                                       },
+                                       {
+                                           "ai":  "doubao",
+                                           "sessionId":  "bfce6439-32bf-4b94-8381-1b8e4cf3899f",
+                                           "outcome":  "RESULT_OK",
+                                           "detail":  "",
+                                           "stage":  "finish",
+                                           "errorCategory":  null,
+                                           "aiTypeDetectedFrom":  "smoke-table-row"
+                                       },
+                                       {
+                                           "ai":  "qianwen",
+                                           "sessionId":  "45a6cb0d-73c5-4ac8-9a24-147605d97f6d",
+                                           "outcome":  "RESULT_OK",
+                                           "detail":  "",
+                                           "stage":  "finish",
+                                           "errorCategory":  null,
+                                           "aiTypeDetectedFrom":  "smoke-table-row"
+                                       },
+                                       {
+                                           "ai":  "yuanbao",
+                                           "sessionId":  "1f5df81d-ad4c-443d-a5b2-8073f5f5ff59",
+                                           "outcome":  "RESULT_OK",
+                                           "detail":  "",
+                                           "stage":  "finish",
+                                           "errorCategory":  null,
+                                           "aiTypeDetectedFrom":  "smoke-table-row"
+                                       },
+                                       {
+                                           "ai":  "mita",
+                                           "sessionId":  "3dd4ac2f-4495-4d0e-8eb7-f379676b944e",
+                                           "outcome":  "TIMEOUT",
+                                           "detail":  "",
+                                           "stage":  "execute",
+                                           "errorCategory":  "TASK_TIMEOUT",
+                                           "aiTypeDetectedFrom":  "smoke-table-row"
+                                       },
+                                       {
+                                           "ai":  "gitee",
+                                           "sessionId":  "d36ec3e7-cb21-401f-838f-f3857e76bbd4",
+                                           "outcome":  "RESULT_OK",
+                                           "detail":  "",
+                                           "stage":  "finish",
+                                           "errorCategory":  null,
+                                           "aiTypeDetectedFrom":  "smoke-table-row"
+                                       }
+                                   ],
+                     "logPath":  "tools\\out-fulltest\\p1-zh-full-20260421-083602.log"
+                 },
+                 {
+                     "name":  "p1-emoji-full",
+                     "prompt":  "Regression 🚀 OK",
+                     "startTime":  "2026-04-21T08:40:01.6917996+08:00",
+                     "endTime":  "2026-04-21T08:44:15.9834916+08:00",
+                     "durationSec":  254.29,
+                     "exitCode":  0,
+                     "summaryFound":  true,
+                     "resultOk":  5,
+                     "resultTotal":  6,
+                     "passed":  false,
+                     "aiResults":  [
+                                       {
+                                           "ai":  "deepseek",
+                                           "sessionId":  "d2f3a239-5b5e-4198-8e89-d132149c1417",
+                                           "outcome":  "RESULT_OK",
+                                           "detail":  "",
+                                           "stage":  "finish",
+                                           "errorCategory":  null,
+                                           "aiTypeDetectedFrom":  "smoke-table-row"
+                                       },
+                                       {
+                                           "ai":  "doubao",
+                                           "sessionId":  "dd48e3ff-fb65-4fd7-89c9-da4bf5ba9b87",
+                                           "outcome":  "RESULT_OK",
+                                           "detail":  "",
+                                           "stage":  "finish",
+                                           "errorCategory":  null,
+                                           "aiTypeDetectedFrom":  "smoke-table-row"
+                                       },
+                                       {
+                                           "ai":  "qianwen",
+                                           "sessionId":  "471166b5-4070-4b24-9ec2-208875c3cf80",
+                                           "outcome":  "RESULT_OK",
+                                           "detail":  "",
+                                           "stage":  "finish",
+                                           "errorCategory":  null,
+                                           "aiTypeDetectedFrom":  "smoke-table-row"
+                                       },
+                                       {
+                                           "ai":  "yuanbao",
+                                           "sessionId":  "b8c180b3-5b6a-46f7-9fd9-9abb502c260f",
+                                           "outcome":  "RESULT_OK",
+                                           "detail":  "",
+                                           "stage":  "finish",
+                                           "errorCategory":  null,
+                                           "aiTypeDetectedFrom":  "smoke-table-row"
+                                       },
+                                       {
+                                           "ai":  "mita",
+                                           "sessionId":  "5739e007-3421-4eb2-a5f6-e0d89036400d",
+                                           "outcome":  "TIMEOUT",
+                                           "detail":  "",
+                                           "stage":  "execute",
+                                           "errorCategory":  "TASK_TIMEOUT",
+                                           "aiTypeDetectedFrom":  "smoke-table-row"
+                                       },
+                                       {
+                                           "ai":  "gitee",
+                                           "sessionId":  "f517dee3-ea62-4672-a747-8d718c1b3801",
+                                           "outcome":  "RESULT_OK",
+                                           "detail":  "",
+                                           "stage":  "finish",
+                                           "errorCategory":  null,
+                                           "aiTypeDetectedFrom":  "smoke-table-row"
+                                       }
+                                   ],
+                     "logPath":  "tools\\out-fulltest\\p1-emoji-full-20260421-084001.log"
+                 }
+             ]
+}
