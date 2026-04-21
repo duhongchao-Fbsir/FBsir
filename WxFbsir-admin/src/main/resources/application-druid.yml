@@ -8,7 +8,8 @@ spring:
             # 生产环境建议使用环境变量：WXFBSIR_MYSQL_URL, WXFBSIR_MYSQL_USERNAME, WXFBSIR_MYSQL_PASSWORD
             master:
                 # characterEncoding 须为 UTF-8（与库表 utf8mb4 一致）；勿用小写 utf8，避免与 MySQL 历史 utf8(utf8mb3) 混淆导致中文乱码
-                url: ${WXFBSIR_MYSQL_URL:jdbc:mysql://127.0.0.1:3306/wxfbsir?useUnicode=true&characterEncoding=UTF-8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8}
+                # useSSL=false、allowPublicKeyRetrieval=true 便于本机/Docker MySQL 8 直连；生产请用 WXFBSIR_MYSQL_URL 覆盖为带 SSL 的地址
+                url: ${WXFBSIR_MYSQL_URL:jdbc:mysql://127.0.0.1:3306/wxfbsir?useUnicode=true&characterEncoding=UTF-8&zeroDateTimeBehavior=convertToNull&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=GMT%2B8}
                 username: ${WXFBSIR_MYSQL_USERNAME:root}
                 password: ${WXFBSIR_MYSQL_PASSWORD:root}
             # 从库数据源

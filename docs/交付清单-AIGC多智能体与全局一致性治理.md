@@ -35,6 +35,8 @@
 |------|----------------|
 | Maven 全模块测试 | 根目录 `mvn test`（可用 `build-tools/.../mvn.cmd`） |
 | Engine 测试 | `WxFbsir-engine` 模块 `mvn test` |
+
+> **主副节点**：上表两条为**两条独立 Maven 工程**；根 `pom` **不**聚合 `WxFbsir-engine`（既定设计）。全量 Java 验证须分别执行，**禁止**在文档或 PR 中写成「根 `mvn test` 已包含 Engine」。审计清单见 [全局一致性对齐说明.md §1.4](全局一致性对齐说明.md)。
 | 前端 | `WxFbsir-ui`：`npm run build:prod`、`npm run test:aigc-mapper` |
 | E2E | `tools/e2e-aigc-regression.ps1`：P0 / P1（需本机 Admin+Engine+各站登录） |
 | PR 辅助 | [tools/pr-submit-aigc.md](../tools/pr-submit-aigc.md)（标题/正文模板、Reviewer 核对项） |
@@ -52,7 +54,7 @@
 | **P1** | 多 AI 并行预保存竞态 | **已修复**：`saveInitialRequest` 同步 + 已存在则跳过 |
 | **P2** | `engineMessageNormalizer` 默认 `unknown` | **已修复**：`inferAiTypeFromMessageType` |
 | **—** | 废弃 `AiResultHandler` 双写库 | **已删除** 占位类（无引用） |
-| **可选** | 产出物生成前 `results` 校验、能力 CI 对照 | 待办 |
+| **—** | 产出物 `OutputArtifactContentResolver`（含 `results` 与回退）、草稿 `user_id`、前端 `test:aigc-mapper` / `run-ci-aigc-checks.ps1` | **已落地**（持续维护） |
 
 ---
 
@@ -85,10 +87,8 @@
 
 ## 七、后续建议（可选）
 
-1. 按审计 **P0** 改代码并补回归用例。  
-2. `AigcController` 输出物相关接口补 **SpringDoc** 注解。  
-3. Engine 能力清单与前端矩阵 **CI 对照**。  
-4. 删除 `AiResultHandler` 前全库确认无引用。  
+1. `AigcController` 输出物接口在 OpenAPI 中补充分组说明（依赖 Admin 侧 SpringDoc 扫描范围）。  
+2. 需要时让 AIGC 页可选拉取 `GET /aigc/ai/list` 与 `ENGINE_CONFIGS` 做差异提示（当前以 `engineConfig.js` 为展示真源）。  
 
 ---
 

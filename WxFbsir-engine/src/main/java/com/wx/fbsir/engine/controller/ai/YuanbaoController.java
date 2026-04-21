@@ -111,7 +111,7 @@ public class YuanbaoController extends StreamTaskHelper {
 
         ReentrantLock userLock = getUserSerialLock(userId);
         userLock.lock();
-        StreamTask task = startStreamTask(userId, sessionId, 2000);
+        StreamTask task = startStreamTask(userId, sessionId, extractAiType(message), 2000);
         BrowserSession session = null;
         try {
             task.sendLog("正在打开元宝并唤起登录浮层...");
@@ -394,27 +394,41 @@ public class YuanbaoController extends StreamTaskHelper {
                 yuanbaoUtil.tryHandleAccountTypePopup(page);
             }
 
+            boolean uploadAttempted = false;
+            boolean uploadEffective = true;
             if (enableFileUpload && uploadedFileUrl != null && !uploadedFileUrl.isEmpty()) {
+                uploadAttempted = true;
                 task.sendLog("检测到文件，正在上传到元宝...");
-                FileDownloadUtil.UploadResult fileResult = fileDownloadUtil.downloadAndUploadToPage(
+                FileDownloadUtil.UploadResult fileResult = fileDownloadUtil.downloadAndUploadWithFallback(
                     uploadedFileUrl,
                     page,
-                    (p, localFilePath) -> fileDownloadUtil.uploadViaDOM(p, localFilePath, new String[]{
+                    (p, localFilePath) -> yuanbaoUtil.uploadFile(p, localFilePath),
+                    () -> {
+                        try {
+                            page.locator("textarea, div[contenteditable='true']").first()
+                                .scrollIntoViewIfNeeded();
+                            page.waitForTimeout(400);
+                        } catch (Exception ignore) {
+                            // ignore
+                        }
+                    },
+                    new String[]{
                         "button:has-text('上传文件')",
                         "button:has-text('上传')",
                         "[role='button']:has-text('上传')",
                         "button:has-text('附件')",
                         "[aria-label*='上传']",
                         "[class*='upload']"
-                    }),
-                    null
+                    }
                 );
+                uploadEffective = fileResult.isSuccess();
                 if (!fileResult.isSuccess()) {
-                    task.sendError("文件处理失败: " + fileResult.getErrorMessage());
-                    return;
+                    task.sendLog("文件处理失败(" + fileResult.getErrorMessage() + ")，将继续发送文本消息");
+                    log.warn("[Yuanbao咨询] 文件上传失败: {}", fileResult.getErrorMessage());
+                } else {
+                    task.sendLog("文件已上传，等待平台解析...");
+                    page.waitForTimeout(1200);
                 }
-                task.sendLog("文件已上传，等待平台解析...");
-                page.waitForTimeout(1200);
             }
 
             task.sendLog("登录验证通过，准备发送问题...");
@@ -459,6 +473,13 @@ public class YuanbaoController extends StreamTaskHelper {
             resultData.put("textContent", answer != null ? answer : "");
             resultData.put("answer", answer != null ? answer : "元宝回复完成，但获取内容失败");
             resultData.put("hasScreenshot", false);
+            Map<String, Object> qualityGate = com.wx.fbsir.engine.utils.ai.ResponseQualityGate.evaluate(
+                query, answer, uploadAttempted, uploadEffective, uploadedFileUrl
+            );
+            resultData.put("qualityGate", qualityGate);
+            if ("suspect".equals(String.valueOf(qualityGate.get("status")))) {
+                task.sendLog("结果门禁提示：" + qualityGate.get("summary"));
+            }
 
             task.sendSuccess("元宝回复完成", resultData);
         } catch (Exception e) {

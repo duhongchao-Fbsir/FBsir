@@ -14,6 +14,7 @@
         Engine 副节点模块 - 独立部署的浏览器自动化服务
         通过 WebSocket 与主节点通信，执行浏览器自动化任务
         独立打包、独立部署，与其他模块代码不耦合
+        （本工程不在仓库根 pom 的 Maven reactor 中，属主副节点架构既定设计，勿为「统一构建」并入根 modules）
     </description>
 
     <properties>

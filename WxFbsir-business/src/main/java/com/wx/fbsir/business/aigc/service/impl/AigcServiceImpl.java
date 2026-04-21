@@ -4,6 +4,7 @@ import com.wx.fbsir.business.aigc.domain.AiRequest;
 import com.wx.fbsir.business.aigc.domain.ChatHistoryRequest;
 import com.wx.fbsir.business.aigc.mapper.AigcMapper;
 import com.wx.fbsir.business.aigc.service.IAigcService;
+import com.wx.fbsir.business.aigc.support.OutputArtifactContentResolver;
 import com.wx.fbsir.common.utils.SecurityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
@@ -90,6 +91,7 @@ public class AigcServiceImpl implements IAigcService {
         try {
             // 设置草稿ID
             draftData.put("id", UUID.randomUUID().toString());
+            ensureDraftUserId(draftData);
             aigcMapper.saveDraft(draftData);
             return true;
         } catch (Exception e) {
@@ -113,6 +115,11 @@ public class AigcServiceImpl implements IAigcService {
     }
 
     @Override
+    public Map<String, Object> getDraftById(String draftId, Long userId) {
+        return aigcMapper.getDraftById(draftId, userId);
+    }
+
+    @Override
     public List<Map<String, Object>> getAvailableAiList() {
         // 硬编码的AI列表（未来可配置）
         List<Map<String, Object>> aiList = new ArrayList<>();
@@ -121,7 +128,7 @@ public class AigcServiceImpl implements IAigcService {
         deepSeek.put("id", "deepseek");
         deepSeek.put("name", "DeepSeek");
         deepSeek.put("description", "DeepSeek AI助手，支持深度思考和联网搜索");
-        deepSeek.put("avatar", "/static/ai/deepseek.png");
+        deepSeek.put("avatar", "https://www.deepseek.com/favicon.ico");
         deepSeek.put("onlineStatus", true);
         deepSeek.put("features", List.of("深度思考", "联网搜索", "代码生成"));
         // 与 Engine 注解真源一致；Engine 侧另注册 AI_*_CHECK_LOGIN 等别名以兼容旧调用
@@ -136,7 +143,7 @@ public class AigcServiceImpl implements IAigcService {
         giteeAi.put("id", "gitee");
         giteeAi.put("name", "Gitee AI Chat");
         giteeAi.put("description", "Gitee AI Chat 智能助手");
-        giteeAi.put("avatar", "/static/ai/gitee.png");
+        giteeAi.put("avatar", "https://gitee.com/favicon.ico");
         giteeAi.put("onlineStatus", true);
         giteeAi.put("features", List.of("开源探索", "仓库问答", "帮助中心"));
         giteeAi.put("types", List.of(
@@ -178,7 +185,7 @@ public class AigcServiceImpl implements IAigcService {
         yuanbaoAi.put("id", "yuanbao");
         yuanbaoAi.put("name", "腾讯元宝");
         yuanbaoAi.put("description", "腾讯元宝网页版对话");
-        yuanbaoAi.put("avatar", "https://lf-flow-web-cdn.doubao.com/obj/flow-doubao/doubao/chat/logo-icon2.png");
+        yuanbaoAi.put("avatar", "https://yuanbao.tencent.com/favicon.ico");
         yuanbaoAi.put("onlineStatus", true);
         yuanbaoAi.put("features", List.of("多轮对话", "网页自动化"));
         yuanbaoAi.put("types", List.of(
@@ -187,20 +194,6 @@ public class AigcServiceImpl implements IAigcService {
             "AI_YUANBAO_QUERY"
         ));
         aiList.add(yuanbaoAi);
-
-        Map<String, Object> wenxinAi = new HashMap<>();
-        wenxinAi.put("id", "wenxin");
-        wenxinAi.put("name", "文心一言");
-        wenxinAi.put("description", "百度文心一言网页版对话");
-        wenxinAi.put("avatar", "https://bce.bdstatic.com/p3m/common-service/uploads/logo_8ee44a1.png");
-        wenxinAi.put("onlineStatus", true);
-        wenxinAi.put("features", List.of("多轮对话", "网页自动化"));
-        wenxinAi.put("types", List.of(
-            "WENXIN_CHECK_LOGIN",
-            "WENXIN_SCAN_LOGIN",
-            "AI_WENXIN_QUERY"
-        ));
-        aiList.add(wenxinAi);
 
         Map<String, Object> mitaAi = new HashMap<>();
         mitaAi.put("id", "mita");
@@ -241,7 +234,34 @@ public class AigcServiceImpl implements IAigcService {
 
     @Override
     public void saveExtensionData(Map<String, Object> extensionData) {
+        ensureDraftUserId(extensionData);
         aigcMapper.saveExtensionData(extensionData);
+    }
+
+    /**
+     * 草稿/扩展表历史上用 user_name 存用户 ID；现双写 user_id。若仅有可解析为数字的 userName，则补全 userId。
+     */
+    private static void ensureDraftUserId(Map<String, Object> row) {
+        if (row == null || row.get("userId") != null) {
+            return;
+        }
+        Object un = row.get("userName");
+        if (un == null) {
+            return;
+        }
+        if (un instanceof Number) {
+            row.put("userId", ((Number) un).longValue());
+            return;
+        }
+        String s = String.valueOf(un).trim();
+        if (s.isEmpty()) {
+            return;
+        }
+        try {
+            row.put("userId", Long.parseLong(s));
+        } catch (NumberFormatException ignored) {
+            // 非数字用户名：保持仅 user_name，由 SQL 兼容分支匹配
+        }
     }
 
     @Override
@@ -253,7 +273,7 @@ public class AigcServiceImpl implements IAigcService {
         for (Map<String, Object> item : list) {
             String taskId = String.valueOf(item.get("taskId"));
             if (taskId != null && !taskId.isEmpty() && !"null".equals(taskId)) {
-                List<Map<String, Object>> aiResponses = aigcMapper.getPlayWrightDraftAiList(taskId);
+                List<Map<String, Object>> aiResponses = aigcMapper.getPlayWrightDraftAiList(taskId, userId);
                 item.put("aiResponses", aiResponses);
             } else {
                 item.put("aiResponses", new java.util.ArrayList<>());
@@ -280,7 +300,7 @@ public class AigcServiceImpl implements IAigcService {
      * @return 统一返回结构：success / message / data
      */
     @Override
-    public Map<String, Object> generateOutputArtifact(String sessionId) {
+    public Map<String, Object> generateOutputArtifact(String sessionId, List<String> aiTypes) {
         Map<String, Object> result = new HashMap<>();
 
         // 先校验会话是否存在且归属于当前用户，避免通过非法 sessionId 操作他人会话
@@ -321,21 +341,21 @@ public class AigcServiceImpl implements IAigcService {
             dataMap.put("data", innerData);
         }
 
-        // answer 为空说明当前对话尚未形成有效结果，此时生成输出物没有业务意义
-        String answer = (String) innerData.get("answer");
-        if (answer == null) {
+        OutputArtifactContentResolver.Resolution res = OutputArtifactContentResolver.resolve(dataMap, aiTypes);
+        if (!res.isOk()) {
             result.put("success", false);
-            result.put("message", "请先完成对话后再生成输出物");
+            result.put("message", res.getMessage());
             result.put("data", null);
             return result;
         }
+        String summaryBody = res.getSummaryText();
 
         // 当前版本采用规则生成，先产出一份标准结构，后续如接入大模型可在此处平滑替换
         Map<String, Object> artifact = new HashMap<>();
         artifact.put("id", "art-" + System.currentTimeMillis());
         artifact.put("type", "decision_summary");
         artifact.put("title", "本期结论");
-        artifact.put("content", "问题：" + userPrompt + "\n结论摘要：" + answer);
+        artifact.put("content", "问题：" + (userPrompt != null ? userPrompt : "") + "\n结论摘要：\n" + summaryBody);
         artifact.put("createdAt", LocalDateTime.now().toString());
 
         // MVP 仅保留当前最新输出物，重新生成时直接覆盖，避免同一会话下多份输出物难以管理
@@ -368,8 +388,15 @@ public class AigcServiceImpl implements IAigcService {
      * @return 导出结果（Markdown 文本或错误信息）
      */
     @Override
-    public Map<String, Object> exportOutputArtifactMarkdown(String sessionId) {
+    public Map<String, Object> exportOutputArtifactMarkdown(String sessionId, List<String> aiTypes) {
         Map<String, Object> result = new HashMap<>();
+
+        if (aiTypes != null && !aiTypes.isEmpty()) {
+            Map<String, Object> generateResult = generateOutputArtifact(sessionId, aiTypes);
+            if (Boolean.FALSE.equals(generateResult.get("success"))) {
+                return generateResult;
+            }
+        }
 
         // 校验会话是否存在及归属，防止非法访问或跨用户操作
         Map<String, Object> chatData = getChatBySessionId(sessionId);
@@ -600,7 +627,7 @@ public class AigcServiceImpl implements IAigcService {
 
             if ("md".equalsIgnoreCase(format)) {
                 // Markdown 推送直接复用导出结果，确保导出内容与推送内容完全一致
-                Map<String, Object> mdResult = exportOutputArtifactMarkdown(sessionId);
+                Map<String, Object> mdResult = exportOutputArtifactMarkdown(sessionId, null);
                 if (Boolean.FALSE.equals(mdResult.get("success"))) {
                     result.put("success", false);
                     result.put("message", String.valueOf(mdResult.get("message")));

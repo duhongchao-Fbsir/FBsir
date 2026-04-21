@@ -120,7 +120,7 @@
 | P1 预保存并发 | **已落地**（`saveInitialRequest` 同步块 + 已存在则跳过） |
 | P2 前端 `aiType` 推断 | **已落地**（`engineMessageNormalizer.js`） |
 | 删除 `AiResultHandler` | **已落地** |
-| 草稿 `user_name` 命名、产出物 `results` 校验、能力 CI | **仍建议**（可选） |
+| 草稿 `user_id` 双写、产出物 `results` 与嵌套 answer 回退、`getDraft` GET、草稿 AI 列表按用户过滤、能力脚本 | **已落地**（见当前代码与 `tools/run-ci-aigc-checks.ps1`） |
 
 ---
 

@@ -198,7 +198,7 @@ public class GiteeController extends StreamTaskHelper {
         log.info("[Gitee扫码登录] 开始 - 用户: {}, 会话: {}", userId, sessionId);
         
         // 🔧 登录业务使用通用流式任务（非AI业务，使用 startStreamTask）
-        StreamTask task = startStreamTask(userId, sessionId, 2000);
+        StreamTask task = startStreamTask(userId, sessionId, extractAiType(message), 2000);
         
         BrowserSession session = null;
         boolean loginSuccess = false;  // 🔥 移到外部作用域，finally 块需要访问
@@ -525,14 +525,18 @@ public class GiteeController extends StreamTaskHelper {
                 }
             }
 
+            boolean uploadAttempted = false;
+            boolean uploadEffective = true;
             // 处理文件上传（可选）
             if (enableFileUpload && uploadedFileUrl != null && !uploadedFileUrl.isEmpty()) {
+                uploadAttempted = true;
                 task.sendLog("检测到文件上传请求，正在处理...");
                 FileDownloadUtil.UploadResult fileResult = fileDownloadUtil.downloadAndUploadToPage(
                     uploadedFileUrl,
                     page,
                     (p, filePath) -> giteeAiUtil.uploadFile(p, filePath)
                 );
+                uploadEffective = fileResult.isSuccess();
 
                 if (fileResult.isSuccess()) {
                     task.sendLog("文件已成功上传到 Gitee AI");
@@ -619,6 +623,14 @@ public class GiteeController extends StreamTaskHelper {
             // 🔥 数据存储策略（优化版）：
             // - answer字段：存储AI回复内容
             resultData.put("answer", aiResponse != null ? aiResponse : "Gitee AI回复完成，但获取内容失败");
+            resultData.put("textContent", aiResponse != null ? aiResponse : "");
+            Map<String, Object> qualityGate = com.wx.fbsir.engine.utils.ai.ResponseQualityGate.evaluate(
+                query, aiResponse, uploadAttempted, uploadEffective, uploadedFileUrl
+            );
+            resultData.put("qualityGate", qualityGate);
+            if ("suspect".equals(String.valueOf(qualityGate.get("status")))) {
+                task.sendLog("结果门禁提示：" + qualityGate.get("summary"));
+            }
             
             // 发送成功结果
             task.sendSuccess("Gitee AI Chat 回复完成", resultData);

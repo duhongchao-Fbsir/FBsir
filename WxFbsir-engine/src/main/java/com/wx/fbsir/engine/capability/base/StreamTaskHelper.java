@@ -101,6 +101,14 @@ public abstract class StreamTaskHelper {
     protected StreamTask startStreamTask(String userId, String sessionId, long intervalMillis) {
         return new StreamTask(userId, sessionId, "unknown", intervalMillis, false);
     }
+
+    /**
+     * 通用流式任务（指定 aiType，用于扫码登录等，避免 TASK_RESULT 中 aiType 恒为 unknown）
+     */
+    protected StreamTask startStreamTask(String userId, String sessionId, String aiType, long intervalMillis) {
+        String at = (aiType != null && !aiType.isBlank()) ? aiType.trim() : "unknown";
+        return new StreamTask(userId, sessionId, at, intervalMillis, false);
+    }
     
     // ==========================================================================
     // 🤖 AI业务流式任务（发送 AI_TASK_* 消息）

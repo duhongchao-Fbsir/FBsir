@@ -16,6 +16,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * {@link WsHostWhitelistMapper#selectHostsForHttpHealthCheck()} 集成测试（H2 + 真实 XML）。
+ * <p>默认 Surefire 命名不包含 {@code *IT}；且当前测试 Application 与全量 Mapper 扫描存在冲突，
+ * 需在专用 profile 中单独运行或后续收紧 {@code WebsocketMapperTestApplication} 后再纳入 CI。</p>
  */
 @SpringBootTest(classes = WebsocketMapperTestApplication.class)
 @ActiveProfiles("test")

@@ -8,6 +8,7 @@ import com.wx.fbsir.engine.capability.annotation.OnceCapability;
 import com.wx.fbsir.engine.capability.annotation.StreamCapability;
 import com.wx.fbsir.engine.capability.base.StreamTaskHelper;
 import com.wx.fbsir.engine.playwright.pool.BrowserPoolManager;
+import com.wx.fbsir.engine.playwright.pool.BrowserUserSerialLocks;
 import com.wx.fbsir.engine.playwright.session.BrowserSession;
 import com.wx.fbsir.engine.utils.ai.MitaUtil;
 import com.wx.fbsir.engine.utils.common.FileDownloadUtil;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Controller;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * 秘塔 AI 搜索（metaso.cn）WebSocket 控制器。
@@ -52,10 +54,13 @@ public class MitaController extends StreamTaskHelper {
         String sessionId = extractSessionId(message);
         String aiType = extractAiType(message);
 
+        ReentrantLock userLock = BrowserUserSerialLocks.lockFor("mita", userId);
+        userLock.lock();
+        try {
         log.info("[秘塔登录检测] 开始 - 用户: {}, 会话: {}", userId, sessionId);
         BrowserSession session = null;
         try {
-            session = browserPool.acquirePersistent(userId, "mita", false);
+            session = acquireMitaSessionWithHealth(userId);
 
             if (com.wx.fbsir.engine.playwright.login.manager.LoginStateManager.hasLoginState("mita", userId)) {
                 try {
@@ -69,7 +74,18 @@ public class MitaController extends StreamTaskHelper {
                 }
             }
 
-            String loginStatus = mitaUtil.checkLoginStatus(session.getOrCreatePage(), true);
+            Page page = session.getOrCreatePage();
+            String loginStatus = mitaUtil.checkLoginStatus(page, true);
+            if ("false".equals(loginStatus) && com.wx.fbsir.engine.playwright.login.manager.LoginStateManager.hasLoginState("mita", userId)) {
+                try {
+                    log.info("[秘塔登录检测] 已持久化登录态但首次检测为未登录，刷新页面后重试");
+                    page.reload(new Page.ReloadOptions().setWaitUntil(WaitUntilState.DOMCONTENTLOADED).setTimeout(30000));
+                    page.waitForTimeout(1200);
+                    loginStatus = mitaUtil.checkLoginStatus(page, false);
+                } catch (Exception e) {
+                    log.warn("[秘塔登录检测] 刷新重试失败: {}", e.getMessage());
+                }
+            }
             boolean isLoggedIn = !"false".equals(loginStatus);
 
             Map<String, Object> resultData = new HashMap<>();
@@ -93,6 +109,9 @@ public class MitaController extends StreamTaskHelper {
                 }
             }
         }
+        } finally {
+            userLock.unlock();
+        }
     }
 
     @StreamCapability(
@@ -104,12 +123,15 @@ public class MitaController extends StreamTaskHelper {
         String userId = message.getUserId();
         String sessionId = extractSessionId(message);
 
+        ReentrantLock userLock = BrowserUserSerialLocks.lockFor("mita", userId);
+        userLock.lock();
+        try {
         log.info("[秘塔扫码登录] 开始 - 用户: {}, 会话: {}", userId, sessionId);
-        StreamTask task = startStreamTask(userId, sessionId, 2000);
+        StreamTask task = startStreamTask(userId, sessionId, extractAiType(message), 2000);
         BrowserSession session = null;
         try {
             task.sendLog("正在打开秘塔并唤起登录...");
-            session = browserPool.acquirePersistent(userId, "mita", false);
+            session = acquireMitaSessionWithHealth(userId);
             Page page = session.getOrCreatePage();
 
             if (!mitaUtil.navigateToLoginPageAndOpenLoginLayer(page)) {
@@ -210,6 +232,9 @@ public class MitaController extends StreamTaskHelper {
                 }
             }
         }
+        } finally {
+            userLock.unlock();
+        }
     }
 
     @StreamCapability(
@@ -219,6 +244,9 @@ public class MitaController extends StreamTaskHelper {
     )
     public void handleQuery(EngineMessage message) {
         String userId = message.getUserId();
+        ReentrantLock userLock = BrowserUserSerialLocks.lockFor("mita", userId);
+        userLock.lock();
+        try {
         String sessionId = extractSessionId(message);
         String aiType = extractAiType(message);
 
@@ -244,9 +272,14 @@ public class MitaController extends StreamTaskHelper {
         }
 
         String query = payload.getString("query");
+        boolean isNewChat = payload.getBooleanValue("isNewChat");
         String metasoChatId = payload.getString("metasoChatId");
         if (metasoChatId == null || metasoChatId.isEmpty()) {
             metasoChatId = payload.getString("mitaChatId");
+        }
+        if (isNewChat) {
+            // 新会话必须从首页起步，避免误恢复到历史AI会话
+            metasoChatId = null;
         }
         CapabilityNormalizer.NormalizedCapabilities normalized = CapabilityNormalizer.normalize(aiType, payload);
         boolean enableFileUpload = normalized.isFileUploadEnabled();
@@ -265,7 +298,7 @@ public class MitaController extends StreamTaskHelper {
             }
 
             task.sendLog("正在连接秘塔...");
-            session = browserPool.acquirePersistent(userId, "mita", false);
+            session = acquireMitaSessionWithHealth(userId);
 
             boolean restoredLoginState = false;
             if (com.wx.fbsir.engine.playwright.login.manager.LoginStateManager.hasLoginState("mita", userId)) {
@@ -304,6 +337,9 @@ public class MitaController extends StreamTaskHelper {
                     }
                 }
             } else {
+                if (isNewChat) {
+                    task.sendLog("已选择新会话，跳过历史会话恢复");
+                }
                 task.sendLog("正在检查登录状态...");
                 String loginStatus = mitaUtil.checkLoginStatus(page, true);
                 if ("false".equals(loginStatus) && restoredLoginState) {
@@ -323,12 +359,15 @@ public class MitaController extends StreamTaskHelper {
                 }
             }
 
+            boolean uploadAttempted = false;
+            boolean uploadEffective = true;
             if (enableFileUpload && uploadedFileUrl != null && !uploadedFileUrl.isEmpty()) {
+                uploadAttempted = true;
                 task.sendLog("检测到文件，正在上传到秘塔...");
                 FileDownloadUtil.UploadResult fileResult = fileDownloadUtil.downloadAndUploadWithFallback(
                     uploadedFileUrl,
                     page,
-                    (p, localFilePath) -> fileDownloadUtil.uploadComposerAreaFile(p, localFilePath, "[秘塔文件上传]"),
+                    (p, localFilePath) -> mitaUtil.uploadFile(p, localFilePath),
                     null,
                     new String[]{
                         "button:has-text('上传文件')",
@@ -339,6 +378,7 @@ public class MitaController extends StreamTaskHelper {
                         "[class*='upload']"
                     }
                 );
+                uploadEffective = fileResult.isSuccess();
                 if (!fileResult.isSuccess()) {
                     task.sendLog("文件处理失败(" + fileResult.getErrorMessage() + ")，将继续发送文本消息");
                     log.warn("[秘塔咨询] 文件上传失败: {}", fileResult.getErrorMessage());
@@ -395,6 +435,13 @@ public class MitaController extends StreamTaskHelper {
             resultData.put("answer", answer != null ? answer : "秘塔回复完成，但获取内容失败");
             resultData.put("conversationScreenshot", conversationScreenshot);
             resultData.put("hasScreenshot", conversationScreenshot != null && !conversationScreenshot.isEmpty());
+            Map<String, Object> qualityGate = com.wx.fbsir.engine.utils.ai.ResponseQualityGate.evaluate(
+                query, answer, uploadAttempted, uploadEffective, uploadedFileUrl
+            );
+            resultData.put("qualityGate", qualityGate);
+            if ("suspect".equals(String.valueOf(qualityGate.get("status")))) {
+                task.sendLog("结果门禁提示：" + qualityGate.get("summary"));
+            }
 
             task.sendSuccess("秘塔回复完成", resultData);
             log.info("[秘塔咨询] 完成 - 会话: {}, 耗时: {}s", sessionId, resultData.get("elapsedTime"));
@@ -412,6 +459,44 @@ public class MitaController extends StreamTaskHelper {
                 }
             }
         }
+        } finally {
+            userLock.unlock();
+        }
+    }
+
+    /**
+     * 与元宝类似：持久化会话复用后探测 Page 是否仍可用，失效则销毁并重建，避免 about:blank / 已关闭页导致误判未登录。
+     */
+    private BrowserSession acquireMitaSessionWithHealth(String userId) {
+        BrowserSession session = browserPool.acquirePersistent(userId, "mita", false);
+        try {
+            Page page = session.getOrCreatePage();
+            page.url();
+            return session;
+        } catch (Exception firstEx) {
+            if (!isTargetClosed(firstEx)) {
+                throw (firstEx instanceof RuntimeException re) ? re : new RuntimeException(firstEx);
+            }
+            log.warn("[秘塔会话] 检测到 Page/Context 失效，准备重建 - 用户: {}, 错误: {}", userId, firstEx.getMessage());
+            try {
+                browserPool.destroy(session);
+            } catch (Exception ignore) {
+            }
+            BrowserSession rebuilt = browserPool.acquirePersistent(userId, "mita", false);
+            Page rebuiltPage = rebuilt.getOrCreatePage();
+            rebuiltPage.url();
+            return rebuilt;
+        }
+    }
+
+    private static boolean isTargetClosed(Throwable ex) {
+        if (ex == null || ex.getMessage() == null) {
+            return false;
+        }
+        String msg = ex.getMessage().toLowerCase();
+        return msg.contains("target page, context or browser has been closed")
+            || msg.contains("targetclosederror")
+            || msg.contains("browser has been closed");
     }
 
     private String extractSessionId(EngineMessage message) {

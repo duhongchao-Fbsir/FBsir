@@ -685,10 +685,11 @@ public class DeepSeekUtil {
 
                 // 先尝试回车发送，再用按钮兜底，避免仅靠textarea文本判断导致误判
                 String initialValue = safeReadInputValue(inputBox);
+                int beforePromptCount = countPromptOccurrences(page, userPrompt);
                 inputBox.press("Enter");
                 page.waitForTimeout(1000);
 
-                if (isMessageSubmitted(page, inputBox, initialValue)) {
+                if (isMessageSubmitted(page, inputBox, initialValue, userPrompt, beforePromptCount)) {
                     log.info("[DeepSeek] 消息发送成功（Enter）");
                     return true;
                 }
@@ -698,7 +699,11 @@ public class DeepSeekUtil {
                     "button:has-text('Send')",
                     "button[type='submit']",
                     "div[role='button']:has-text('发送')",
-                    "button.ds-icon-button:has(svg)"
+                    "button.ds-icon-button:has(svg)",
+                    "button[aria-label*='发送']",
+                    "button[aria-label*='Send']",
+                    "button[class*='send']",
+                    "div[role='button'][aria-label*='发送']"
                 };
 
                 for (String selector : sendButtonSelectors) {
@@ -707,7 +712,7 @@ public class DeepSeekUtil {
                         if (sendButton.count() > 0 && sendButton.isVisible(new Locator.IsVisibleOptions().setTimeout(800))) {
                             sendButton.click(new Locator.ClickOptions().setTimeout(3000).setForce(true));
                             page.waitForTimeout(1000);
-                            if (isMessageSubmitted(page, inputBox, initialValue)) {
+                            if (isMessageSubmitted(page, inputBox, initialValue, userPrompt, beforePromptCount)) {
                                 log.info("[DeepSeek] 消息发送成功（按钮兜底）");
                                 return true;
                             }
@@ -737,10 +742,14 @@ public class DeepSeekUtil {
         }
     }
 
-    private boolean isMessageSubmitted(Page page, Locator inputBox, String beforeValue) {
+    private boolean isMessageSubmitted(Page page, Locator inputBox, String beforeValue, String userPrompt, int beforePromptCount) {
         try {
             String currentValue = safeReadInputValue(inputBox);
             if (currentValue.isEmpty() || !currentValue.equals(beforeValue)) {
+                return true;
+            }
+
+            if (countPromptOccurrences(page, userPrompt) > beforePromptCount) {
                 return true;
             }
 
@@ -752,6 +761,35 @@ public class DeepSeekUtil {
             // 忽略校验异常，按未提交处理
         }
         return false;
+    }
+
+    private int countPromptOccurrences(Page page, String prompt) {
+        if (prompt == null || prompt.isBlank()) {
+            return 0;
+        }
+        try {
+            Object raw = page.evaluate("""
+                (text) => {
+                    const bodyText = (document.body && document.body.innerText) ? document.body.innerText : "";
+                    if (!bodyText || !text) return 0;
+                    let count = 0;
+                    let idx = 0;
+                    while (true) {
+                        idx = bodyText.indexOf(text, idx);
+                        if (idx < 0) break;
+                        count++;
+                        idx += text.length;
+                    }
+                    return count;
+                }
+            """, prompt);
+            if (raw instanceof Number n) {
+                return n.intValue();
+            }
+        } catch (Exception ignore) {
+            // 忽略统计异常
+        }
+        return 0;
     }
 
     /**

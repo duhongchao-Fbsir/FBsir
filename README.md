@@ -94,6 +94,8 @@ WxFbsir
 └── WxFbsir-system      // [系统] 用户、权限、日志管理
 ```
 
+**Maven 主副节点**：`WxFbsir-engine` 为独立工程，**不**列入根目录 `pom.xml` 的 `<modules>`；构建与测试在 `WxFbsir-engine/` 下单独执行。全局审计清单见 `docs/全局一致性对齐说明.md` **§1.4**（避免误改）。
+
 ---
 
 ## 🚀 快速开始

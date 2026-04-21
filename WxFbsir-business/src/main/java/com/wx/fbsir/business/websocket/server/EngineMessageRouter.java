@@ -673,14 +673,6 @@ public class EngineMessageRouter {
             case "kimi":
                 chatData.put("kimiChatId", aiChatId);
                 break;
-            case "baidu":
-            case "百度":
-            case "百度ai":
-            case "wenxin":
-            case "文心":
-            case "文心一言":
-                chatData.put("baiduChatId", aiChatId);
-                break;
             case "metaso":
             case "秘塔":
             case "秘塔ai":

@@ -36,7 +36,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ClientMessageRouter {
 
     private static final Logger log = LoggerFactory.getLogger(ClientMessageRouter.class);
-    
     // 🔥 sessionId → chatId 缓存（供 EngineMessageRouter 使用）
     private static final ConcurrentHashMap<String, String> SESSION_CHAT_ID_CACHE = new ConcurrentHashMap<>();
 
@@ -408,9 +407,6 @@ public class ClientMessageRouter {
         if (u.startsWith("AI_YUANBAO")) {
             return "yuanbao";
         }
-        if (u.startsWith("AI_WENXIN")) {
-            return "wenxin";
-        }
         if (u.startsWith("AI_MITA")) {
             return "mita";
         }
@@ -434,8 +430,6 @@ public class ClientMessageRouter {
                 return payload.getString("toneChatId");
             case "yuanbao":
                 return payload.getString("ybChatId");
-            case "wenxin":
-                return payload.getString("baiduChatId");
             case "mita":
                 return payload.getString("metasoChatId");
             default:

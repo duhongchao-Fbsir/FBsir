@@ -429,6 +429,8 @@ CREATE TABLE IF NOT EXISTS `daily_article` (
 - [ ] 目录层级与数据库菜单表层级一致
 - [ ] API文件名与页面目录名保持一致
 - [ ] 没有在未经允许的位置存放代码
+- [ ] **未**将 `WxFbsir-engine` 加入仓库**根** `pom.xml` 的 `<modules>`（主副节点分轨，见 [全局一致性对齐说明.md §1.4](../全局一致性对齐说明.md)）
+- [ ] 若 PR 修改 CI/文档：未宣称「根 `mvn test` 已覆盖 Engine」；Engine 验证仍表述为在 `WxFbsir-engine` 目录单独执行
 
 #### 文件提交
 - [ ] 没有提交本地运行文件（`target/`、`node_modules/`、`.idea/`）

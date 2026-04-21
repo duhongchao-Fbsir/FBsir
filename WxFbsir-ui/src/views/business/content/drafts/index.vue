@@ -253,7 +253,6 @@ const copyContent = async () => {
       const lowered = raw.toLowerCase()
       if (getEngineConfig(lowered)) return lowered
       if (lowered === 'tongyi' || lowered === 'ty') return 'qianwen'
-      if (lowered === 'baidu') return 'wenxin'
       if (lowered === 'metaso') return 'mita'
       const byDisplay = ENGINE_CONFIGS.find(cfg => cfg.displayName === raw)
       return byDisplay?.id || 'unknown'

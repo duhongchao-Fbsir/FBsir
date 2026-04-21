@@ -187,9 +187,10 @@ public class AigcController extends BaseController {
     @Log(title = "保存草稿", businessType = BusinessType.INSERT)
     public AjaxResult saveDraft(@RequestBody Map<String, Object> draftData) {
         try {
-            // 设置用户信息
-            draftData.put("userName", getUserId());
-            
+            Long uid = getUserId();
+            draftData.put("userName", uid);
+            draftData.put("userId", uid);
+
             boolean success = aigcService.saveDraft(draftData);
             return success ? AjaxResult.success("草稿保存成功") : AjaxResult.error("草稿保存失败");
             
@@ -205,6 +206,18 @@ public class AigcController extends BaseController {
      * @param draftId 草稿ID
      * @return 删除结果
      */
+    /**
+     * 按主键查询单条草稿（与前端 {@code drafts.js#getDraft} 对齐）
+     */
+    @GetMapping("/draft/{draftId}")
+    public AjaxResult getDraft(@PathVariable String draftId) {
+        Map<String, Object> row = aigcService.getDraftById(draftId, getUserId());
+        if (row == null || row.isEmpty()) {
+            return AjaxResult.error("草稿不存在或无权访问");
+        }
+        return AjaxResult.success(row);
+    }
+
     @DeleteMapping("/draft/{draftId}")
     @Log(title = "删除草稿", businessType = BusinessType.DELETE)
     public AjaxResult deleteDraft(@PathVariable String draftId) {
@@ -331,6 +344,7 @@ public class AigcController extends BaseController {
     public AjaxResult generateOutputArtifact(@RequestBody Map<String, Object> params) {
         try {
             String sessionId = (String) params.get("sessionId");
+            List<String> aiTypes = parseAiTypes(params.get("aiTypes"));
 
             // sessionId 是定位会话的唯一标识，缺失时无法执行后续业务
             if (sessionId == null || sessionId.isEmpty()) {
@@ -338,7 +352,7 @@ public class AigcController extends BaseController {
             }
 
             // 调用Service生成输出物
-            Map<String, Object> result = aigcService.generateOutputArtifact(sessionId);
+            Map<String, Object> result = aigcService.generateOutputArtifact(sessionId, aiTypes);
 
             // Service层返回失败时，直接透传业务错误信息
             if (Boolean.FALSE.equals(result.get("success"))) {
@@ -368,9 +382,10 @@ public class AigcController extends BaseController {
     @GetMapping("/output/exportMarkdown/{sessionId}")
     @Log(title = "导出输出物Markdown", businessType = BusinessType.EXPORT)
     public void exportMarkdown(@PathVariable String sessionId,
+                               @RequestParam(value = "aiTypes", required = false) List<String> aiTypes,
                                jakarta.servlet.http.HttpServletResponse response) {
         try {
-            Map<String, Object> result = aigcService.exportOutputArtifactMarkdown(sessionId);
+            Map<String, Object> result = aigcService.exportOutputArtifactMarkdown(sessionId, aiTypes);
 
             // 业务失败时返回 JSON，前端可根据 content-type 判断并提示错误
             if (Boolean.FALSE.equals(result.get("success"))) {
@@ -407,6 +422,17 @@ public class AigcController extends BaseController {
                 logger.error("[输出物导出-Markdown] 响应写出失败 - sessionId: {}", sessionId);
             }
         }
+    }
+
+    private List<String> parseAiTypes(Object aiTypesObj) {
+        if (!(aiTypesObj instanceof List<?> rawList)) {
+            return null;
+        }
+        List<String> aiTypes = rawList.stream()
+            .filter(v -> v != null && !String.valueOf(v).trim().isEmpty())
+            .map(String::valueOf)
+            .toList();
+        return aiTypes.isEmpty() ? null : aiTypes;
     }
 
     /**

@@ -138,6 +138,21 @@
                   </el-button>
                 </template>
               </el-dialog>
+              <el-dialog v-model="outputAiSelectorVisible" title="选择输出AI组合" width="480px">
+                <el-checkbox-group v-model="selectedOutputAiTypes" class="output-ai-selector">
+                  <el-checkbox
+                    v-for="candidate in outputAiCandidates"
+                    :key="candidate.aiType"
+                    :label="candidate.aiType"
+                  >
+                    {{ candidate.aiName }}
+                  </el-checkbox>
+                </el-checkbox-group>
+                <template #footer>
+                  <el-button @click="outputAiSelectorVisible = false">取消</el-button>
+                  <el-button type="primary" @click="confirmGenerateOutput">按所选AI生成</el-button>
+                </template>
+              </el-dialog>
             </template>
             <div class="ai-selection-section">
               <div class="ai-cards">
@@ -360,7 +375,10 @@
         <el-card>
           <div v-for="(result, index) in results" :key="index" class="result-content">
             <div class="result-header">
-              <div class="result-title">{{ result.aiName }}的执行结果</div>
+              <div class="result-title">
+                {{ result.aiName }}的执行结果
+                <el-tag v-if="result.isSuspect" type="warning" size="small" style="margin-left: 8px;">结果可疑</el-tag>
+              </div>
               <div class="result-actions">
                 <el-button v-if="result.shareUrl" size="small" type="primary" @click="openShareUrl(result.shareUrl)">
                   <el-icon>
@@ -375,6 +393,9 @@
                   复制文本
                 </el-button>
               </div>
+            </div>
+            <div v-if="result.isSuspect && result.qualitySummary" class="quality-warning">
+              {{ result.qualitySummary }}
             </div>
 
             <!-- 🔥 优先显示截图 -->
@@ -560,7 +581,6 @@ export default {
       if (!raw) return fallback
       if (getEngineConfig(raw)) return raw
       if (raw === 'tongyi' || raw === 'ty') return 'qianwen'
-      if (raw === 'baidu') return 'wenxin'
       if (raw === 'metaso') return 'mita'
       return fallback
     }
@@ -656,6 +676,8 @@ export default {
     const outputTitle = ref('')
     const outputContent = ref('')
     const outputDialogVisible = ref(false)
+    const outputAiSelectorVisible = ref(false)
+    const selectedOutputAiTypes = ref([])
 
     // 当前登录的服务ID
     const currentLoginService = ref('')
@@ -672,7 +694,6 @@ export default {
       maxChatId: '',
       metasoChatId: '',
       kimiChatId: '',
-      baiduChatId: '',
       zhzdChatId: '',
       isNewChat: true
     })
@@ -738,6 +759,21 @@ export default {
     // 🔥 检查是否有任务运行中
     const hasRunningTasks = computed(() => {
       return enabledAIs.value.some(ai => ai.status === 'running')
+    })
+
+    const outputAiCandidates = computed(() => {
+      const candidates = []
+      const seen = new Set()
+      for (const result of results.value) {
+        const aiType = normalizeAiType(result.aiType || result.aiName)
+        if (!aiType || seen.has(aiType)) continue
+        seen.add(aiType)
+        candidates.push({
+          aiType,
+          aiName: result.aiName || (getEngineConfig(aiType)?.displayName || aiType)
+        })
+      }
+      return candidates
     })
 
     // 🔥 按日期和chatId分组历史记录（完全参考旧项目cube-ui）
@@ -843,7 +879,6 @@ export default {
         maxChatId: '',
         metasoChatId: '',
         kimiChatId: '',
-        baiduChatId: '',
         zhzdChatId: '',
         isNewChat: true
       }
@@ -970,7 +1005,10 @@ export default {
             chatId: result.chatId,
             sessionId: historyData.sessionId,
             query: result.query,
-            mode: result.mode
+            mode: result.mode,
+            qualityGate: result.qualityGate || null,
+            isSuspect: result.qualityGate?.status === 'suspect',
+            qualitySummary: result.qualityGate?.summary || ''
           }
         }
 
@@ -1002,7 +1040,10 @@ export default {
             chatId: nestedData.chatId,
             sessionId: historyData.sessionId,  // 🔥 保存sessionId用于复制功能
             query: nestedData.query,
-            mode: nestedData.mode
+            mode: nestedData.mode,
+            qualityGate: nestedData.qualityGate || null,
+            isSuspect: nestedData.qualityGate?.status === 'suspect',
+            qualitySummary: nestedData.qualityGate?.summary || ''
           }]
         } else {
           // 🔥 优先使用historyData.results，如果没有则使用historyData.data.results
@@ -1041,7 +1082,6 @@ export default {
         userInfoReq.value.maxChatId = item.maxChatId || ''
         userInfoReq.value.metasoChatId = item.metasoChatId || findStoredResultByAiType('mita')?.chatId || ''
         userInfoReq.value.kimiChatId = item.kimiChatId || ''
-        userInfoReq.value.baiduChatId = item.baiduChatId || findStoredResultByAiType('wenxin')?.chatId || ''
         userInfoReq.value.zhzdChatId = item.zhzdChatId || ''
         userInfoReq.value.isNewChat = false
 
@@ -1159,12 +1199,24 @@ export default {
       // 🔥 生成sessionId（用于追踪本次请求）
       sessionId = generateUUID()
 
+      const isCurrentRoundNewChat = isNewChat.value
+
       // 🔥 只在点击"创建新对话"按钮时才生成新的chatId
-      if (isNewChat.value) {
+      if (isCurrentRoundNewChat) {
         currentChatId.value = generateUUID()
         userInfoReq.value.chatId = currentChatId.value
         console.log('📝 [新建会话] 生成新的chatId:', currentChatId.value)
-        isNewChat.value = false  // 生成后立即标记为非新会话
+        // 新会话强制清空各平台会话ID，避免误恢复到历史AI会话
+        userInfoReq.value.toneChatId = ''
+        userInfoReq.value.ybChatId = ''
+        userInfoReq.value.dbChatId = ''
+        userInfoReq.value.tyChatId = ''
+        userInfoReq.value.deepseekChatId = ''
+        userInfoReq.value.giteeChatId = ''
+        userInfoReq.value.maxChatId = ''
+        userInfoReq.value.metasoChatId = ''
+        userInfoReq.value.kimiChatId = ''
+        userInfoReq.value.zhzdChatId = ''
       }
 
       // 🔥 如果没有chatId（首次打开且未加载历史），则生成一个
@@ -1191,7 +1243,7 @@ export default {
           continue
         }
         const chatIdField = config.chatIdField || `${aiId}ChatId`
-        const aiChatId = userInfoReq.value[chatIdField] || ''
+        const aiChatId = isCurrentRoundNewChat ? '' : (userInfoReq.value[chatIdField] || '')
 
         const providerOptions = {}
         if (aiId === 'gitee' && aiOptions.repositoryQA) {
@@ -1204,7 +1256,7 @@ export default {
           uploadedFileUrl: uploadedFileUrl.value || '',
           chatId: currentChatId.value,
           sessionId: sessionId,
-          isNewChat: isNewChat.value,
+          isNewChat: isCurrentRoundNewChat,
           userPrompt: promptInput.value,
           enabledAIs: enabledAIs.value,
           progressLogs: progressLogs.value,
@@ -1422,8 +1474,12 @@ export default {
               return
             }
 
-            // 处理AI咨询结果
-            if (resultData.answer) {
+            // 处理AI咨询结果（answer/textContent/截图任一存在即视为有效结果）
+            const answerText = resultData.answer || ''
+            const textContent = resultData.textContent || ''
+            const screenshotUrl = resultData.conversationScreenshot || ''
+            const hasRenderableResult = !!(answerText || textContent || screenshotUrl)
+            if (hasRenderableResult) {
               if (aiType === 'gitee') {
                 syncGiteeRepositoryChoices(resultData)
               }
@@ -1447,16 +1503,24 @@ export default {
               const resultItem = {
                 aiName: aiDisplayName,
                 aiType: aiType,
-                content: resultData.answer,
-                screenshotUrl: resultData.conversationScreenshot,
-                hasScreenshot: resultData.hasScreenshot !== false && resultData.conversationScreenshot,
+                content: answerText || textContent,
+                screenshotUrl: screenshotUrl,
+                hasScreenshot: resultData.hasScreenshot !== false && !!screenshotUrl,
                 shareUrl: resultData.shareUrl,
                 chatId: resultData.chatId,
                 sessionId: messageSessionId,
                 query: resultData.query,
-                mode: resultData.mode
+                mode: resultData.mode,
+                qualityGate: resultData.qualityGate || null,
+                isSuspect: resultData.qualityGate?.status === 'suspect',
+                qualitySummary: resultData.qualityGate?.summary || ''
               }
-              results.value.push(resultItem)
+              const existingIdx = results.value.findIndex(item => normalizeAiType(item.aiType) === normalizeAiType(aiType))
+              if (existingIdx >= 0) {
+                results.value.splice(existingIdx, 1, resultItem)
+              } else {
+                results.value.push(resultItem)
+              }
 
               // 🔥 保存返回的AI会话ID（仅用于上下文复用）
               if (resultData.chatId) {
@@ -1466,12 +1530,17 @@ export default {
               }
 
               // 添加对话截图到幻灯片（如果有）
-              if (resultData.conversationScreenshot) {
-                screenshots.value.push(resultData.conversationScreenshot)
+              if (screenshotUrl) {
+                screenshots.value.push(screenshotUrl)
               }
 
               addProgressLog(`${aiDisplayName}回复完成，耗时${resultData.elapsedTime}秒`, aiType)
-              ElMessage.success(payload.message || `${aiDisplayName}回复完成`)
+              if (resultItem.isSuspect) {
+                addProgressLog(`⚠️ ${aiDisplayName}结果可疑：${resultItem.qualitySummary || '请核对内容与截图'}`, aiType)
+                ElMessage.warning(`${aiDisplayName}已完成，但结果可疑`)
+              } else {
+                ElMessage.success(payload.message || `${aiDisplayName}回复完成`)
+              }
             }
           } else {
             // 处理错误（success=false）
@@ -1512,6 +1581,27 @@ export default {
           // 添加错误日志到进度日志
           addProgressLog(`❌ ${errorTitle}`, aiType)
           addProgressLog(errorMessage, aiType)
+
+          const errorAiConfig = getEngineConfig(aiType)
+          const errorAiName = errorAiConfig ? errorAiConfig.displayName : aiType
+          const errorResult = {
+            aiName: errorAiName,
+            aiType: aiType,
+            content: `[任务失败] ${errorMessage}`,
+            screenshotUrl: '',
+            hasScreenshot: false,
+            shareUrl: '',
+            chatId: '',
+            sessionId: n.sessionId,
+            query: '',
+            mode: 'error'
+          }
+          const existingIdx = results.value.findIndex(item => normalizeAiType(item.aiType) === normalizeAiType(aiType))
+          if (existingIdx >= 0) {
+            results.value.splice(existingIdx, 1, errorResult)
+          } else {
+            results.value.push(errorResult)
+          }
 
           ElMessage({
             message: `${errorTitle}: ${errorMessage}`,
@@ -1778,9 +1868,14 @@ export default {
      * 2. 调用后端生成接口，并将结果填充到编辑弹窗中
      * 3. 生成成功后自动打开编辑对话框，支持用户二次修改
      */
-    const handleGenerateOutput = async () => {
-      const currentSessionId = getCurrentSessionId()
+    const getOutputAiSelection = () => {
+      if (selectedOutputAiTypes.value && selectedOutputAiTypes.value.length > 0) {
+        return selectedOutputAiTypes.value.map(item => String(item || '').trim()).filter(Boolean)
+      }
+      return outputAiCandidates.value.map(item => String(item.aiType || '').trim()).filter(Boolean)
+    }
 
+    const performGenerateOutput = async (currentSessionId, aiTypes) => {
       // 未选中会话时直接拦截
       if (!currentSessionId) {
         ElMessage.error('当前没有可用的会话ID')
@@ -1789,7 +1884,8 @@ export default {
 
       try {
         const res = await generateOutputArtifact({
-          sessionId: currentSessionId
+          sessionId: currentSessionId,
+          aiTypes: aiTypes
         })
 
         if (res.code === 200) {
@@ -1809,6 +1905,37 @@ export default {
       } catch (error) {
         ElMessage.error('生成输出物失败')
       }
+    }
+
+    const handleGenerateOutput = () => {
+      const currentSessionId = getCurrentSessionId()
+      if (!currentSessionId) {
+        ElMessage.error('当前没有可用的会话ID')
+        return
+      }
+
+      const candidates = outputAiCandidates.value
+      if (candidates.length > 1) {
+        selectedOutputAiTypes.value = candidates.map(item => item.aiType)
+        outputAiSelectorVisible.value = true
+        return
+      }
+
+      performGenerateOutput(currentSessionId, getOutputAiSelection())
+    }
+
+    const confirmGenerateOutput = () => {
+      if (!selectedOutputAiTypes.value || selectedOutputAiTypes.value.length === 0) {
+        ElMessage.warning('请至少选择一个AI')
+        return
+      }
+      const currentSessionId = getCurrentSessionId()
+      if (!currentSessionId) {
+        ElMessage.error('当前没有可用的会话ID')
+        return
+      }
+      outputAiSelectorVisible.value = false
+      performGenerateOutput(currentSessionId, selectedOutputAiTypes.value)
     }
 
 
@@ -1874,7 +2001,7 @@ export default {
       }
 
       try {
-        const response = await exportOutputMarkdown(currentSessionId)
+        const response = await exportOutputMarkdown(currentSessionId, getOutputAiSelection())
 
         // 根据响应类型判断结果（关键逻辑）
         const contentType = response.headers['content-type']
@@ -2045,7 +2172,11 @@ export default {
       outputTitle,
       outputContent,
       outputDialogVisible,
+      outputAiSelectorVisible,
+      selectedOutputAiTypes,
+      outputAiCandidates,
       handleGenerateOutput,
+      confirmGenerateOutput,
       handleSaveOutputArtifact,
       handleExportMarkdown,
       handlePushWebhook
@@ -2076,6 +2207,12 @@ export default {
   font-size: 12px;
   color: #909399;
   white-space: nowrap;
+}
+
+.output-ai-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .top-nav {
@@ -2773,6 +2910,16 @@ export default {
         display: flex;
         gap: 12px;
       }
+    }
+
+    .quality-warning {
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #fff7e6;
+      border: 1px solid #ffd591;
+      color: #ad6800;
+      font-size: 13px;
     }
 
     .result-screenshot {

@@ -4,8 +4,10 @@ import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.LoadState;
 import com.microsoft.playwright.options.WaitUntilState;
+import com.wx.fbsir.engine.utils.common.FileDownloadUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -15,6 +17,9 @@ import org.springframework.stereotype.Component;
 public class MitaUtil {
 
     private static final Logger log = LoggerFactory.getLogger(MitaUtil.class);
+
+    @Autowired
+    private FileDownloadUtil fileDownloadUtil;
 
     public static final String METASO_HOME_URL = "https://metaso.cn/";
 
@@ -149,6 +154,26 @@ public class MitaUtil {
         }
     }
 
+    /**
+     * 上传文件到秘塔输入区，优先走定向composer上传，失败回退到DOM通用上传。
+     */
+    public boolean uploadFile(Page page, String localFilePath) {
+        if (fileDownloadUtil.uploadComposerAreaFile(page, localFilePath, "[秘塔文件上传]")) {
+            return true;
+        }
+        return fileDownloadUtil.uploadViaDOM(page, localFilePath, new String[]{
+            "button:has-text('上传文件')",
+            "button:has-text('上传')",
+            "[role='button']:has-text('上传')",
+            "button:has-text('附件')",
+            "button:has-text('本地上传')",
+            "li:has-text('本地上传')",
+            "[aria-label*='上传']",
+            "[class*='upload']",
+            "[class*='attach']"
+        });
+    }
+
     public String sendMessageAndWaitResponse(Page page, String query) {
         if (query == null || query.trim().isEmpty()) {
             throw new IllegalArgumentException("问题不能为空");
@@ -156,11 +181,15 @@ public class MitaUtil {
         page.waitForLoadState(LoadState.DOMCONTENTLOADED);
         page.waitForTimeout(500);
 
+        String baselineReply = extractLatestAssistantText(page);
+        String promptSignal = buildPromptSignal(query);
+        int promptCountBefore = countPromptOccurrences(page, promptSignal);
+
         if (!fillAndSend(page, query.trim())) {
             throw new RuntimeException("未找到输入框或发送失败");
         }
 
-        return waitForAssistantReply(page);
+        return waitForAssistantReply(page, baselineReply, promptSignal, promptCountBefore);
     }
 
     private boolean fillAndSend(Page page, String text) {
@@ -176,10 +205,9 @@ public class MitaUtil {
             page.waitForTimeout(200);
 
             String[] sendSelectors = {
-                "button:has-text('搜索')",
                 "button:has-text('发送')",
-                "div[role='button']:has-text('搜索')",
-                "[class*='search']:not([disabled])",
+                "div[role='button']:has-text('发送')",
+                "button[aria-label*='发送']",
                 "button[type='submit']"
             };
             for (String sel : sendSelectors) {
@@ -226,9 +254,9 @@ public class MitaUtil {
         return null;
     }
 
-    private String waitForAssistantReply(Page page) {
+    private String waitForAssistantReply(Page page, String baselineReply, String promptSignal, int promptCountBefore) {
         long start = System.currentTimeMillis();
-        long maxWait = 300000;
+        long maxWait = 150000;
         String last = "";
         int stable = 0;
         page.waitForTimeout(1500);
@@ -245,6 +273,17 @@ public class MitaUtil {
 
             String text = extractLatestAssistantText(page);
             if (text != null && !text.trim().isEmpty()) {
+                boolean looksLikeBaseline = sameReply(text, baselineReply);
+                int promptCountAfter = countPromptOccurrences(page, promptSignal);
+                boolean promptMoved = promptCountAfter > promptCountBefore;
+                if (!promptMoved) {
+                    page.waitForTimeout(500);
+                    continue;
+                }
+                if (looksLikeBaseline && !promptMoved) {
+                    page.waitForTimeout(500);
+                    continue;
+                }
                 if (text.equals(last)) {
                     stable++;
                     if (stable >= 3) {
@@ -259,10 +298,62 @@ public class MitaUtil {
         }
 
         String fallback = extractLatestAssistantText(page);
-        if (fallback != null && !fallback.trim().isEmpty()) {
+        boolean promptMovedAtEnd = countPromptOccurrences(page, promptSignal) > promptCountBefore;
+        if (fallback != null && !fallback.trim().isEmpty()
+            && promptMovedAtEnd
+            && (!sameReply(fallback, baselineReply) || promptMovedAtEnd)) {
             return fallback.trim();
         }
         return "秘塔超时未返回可读正文，请在浏览器中查看页面";
+    }
+
+    private String buildPromptSignal(String query) {
+        if (query == null) {
+            return "";
+        }
+        String compact = query.replaceAll("\\s+", " ").trim();
+        if (compact.length() > 40) {
+            return compact.substring(0, 40);
+        }
+        return compact;
+    }
+
+    private int countPromptOccurrences(Page page, String promptSignal) {
+        if (promptSignal == null || promptSignal.isBlank()) {
+            return 0;
+        }
+        try {
+            Object o = page.evaluate("""
+                (needle) => {
+                  const t = (document.body && document.body.innerText) ? document.body.innerText : '';
+                  if (!needle) return 0;
+                  let from = 0;
+                  let cnt = 0;
+                  while (true) {
+                    const idx = t.indexOf(needle, from);
+                    if (idx < 0) break;
+                    cnt += 1;
+                    from = idx + needle.length;
+                  }
+                  return cnt;
+                }
+                """, promptSignal);
+            if (o instanceof Number) {
+                return ((Number) o).intValue();
+            }
+        } catch (Exception e) {
+            log.debug("[秘塔] 统计 prompt 出现次数失败: {}", e.getMessage());
+        }
+        return 0;
+    }
+
+    private boolean sameReply(String current, String baseline) {
+        if (current == null || baseline == null) {
+            return false;
+        }
+        String a = current.trim();
+        String b = baseline.trim();
+        return !a.isEmpty() && a.equals(b);
     }
 
     private boolean isGenerating(Page page) {

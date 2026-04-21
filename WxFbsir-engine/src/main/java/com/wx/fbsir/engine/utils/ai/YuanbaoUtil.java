@@ -5,8 +5,10 @@ import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.LoadState;
 import com.microsoft.playwright.options.WaitUntilState;
+import com.wx.fbsir.engine.utils.common.FileDownloadUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.regex.Matcher;
@@ -19,6 +21,9 @@ import java.util.regex.Pattern;
 public class YuanbaoUtil {
 
     private static final Logger log = LoggerFactory.getLogger(YuanbaoUtil.class);
+
+    @Autowired
+    private FileDownloadUtil fileDownloadUtil;
 
     public static final String YUANBAO_HOME_URL = "https://yuanbao.tencent.com/";
 
@@ -242,6 +247,88 @@ public class YuanbaoUtil {
             log.debug("[Yuanbao] 解析会话ID失败: {}", e.getMessage());
         }
         return null;
+    }
+
+    /**
+     * 上传文件到元宝输入区，优先使用平台对话区上传，再降级到DOM通用上传。
+     */
+    public boolean uploadFile(Page page, String localFilePath) {
+        tryHandleAccountTypePopup(page);
+        tryClickComposerPlus(page);
+        if (fileDownloadUtil.uploadComposerAreaFile(page, localFilePath, "[元宝文件上传]")) {
+            return true;
+        }
+        return fileDownloadUtil.uploadViaDOM(page, localFilePath, new String[]{
+            "footer button:has-text('+')",
+            "footer [role='button']:has-text('+')",
+            "[class*='composer'] button:has-text('+')",
+            "button:has-text('上传文件')",
+            "button:has-text('上传')",
+            "[role='button']:has-text('上传')",
+            "button:has-text('附件')",
+            "button:has-text('本地上传')",
+            "li:has-text('本地上传')",
+            "[aria-label*='上传']",
+            "[class*='upload']",
+            "[class*='attach']"
+        });
+    }
+
+    /**
+     * 元宝上传入口常表现为输入框左侧“+”图标按钮，先主动触发一次以暴露 file input。
+     */
+    private void tryClickComposerPlus(Page page) {
+        String[] plusSelectors = {
+            "footer button:has-text('+')",
+            "footer [role='button']:has-text('+')",
+            "[class*='composer'] button:has-text('+')",
+            "footer button[aria-label*='添加']",
+            "footer [role='button'][aria-label*='添加']",
+            "button[aria-label*='添加']"
+        };
+        for (String sel : plusSelectors) {
+            try {
+                Locator loc = page.locator(sel).first();
+                if (loc.count() > 0 && loc.isVisible(new Locator.IsVisibleOptions().setTimeout(900))) {
+                    loc.click(new Locator.ClickOptions().setTimeout(4000));
+                    page.waitForTimeout(450);
+                    log.debug("[元宝文件上传] 已点击上传入口: {}", sel);
+                    return;
+                }
+            } catch (Exception ignore) {
+                // try next selector
+            }
+        }
+        try {
+            Object clicked = page.evaluate("""
+                () => {
+                  const footer = document.querySelector('footer') || document.body;
+                  const candidates = [];
+                  for (const el of footer.querySelectorAll('button,[role="button"]')) {
+                    const r = el.getBoundingClientRect();
+                    const st = window.getComputedStyle(el);
+                    if (r.width < 20 || r.height < 20) continue;
+                    if (st.display === 'none' || st.visibility === 'hidden') continue;
+                    if (r.top < window.innerHeight * 0.55) continue;
+                    const txt = (el.innerText || '').trim();
+                    const aria = (el.getAttribute('aria-label') || '').trim();
+                    if (txt === '+' || aria.includes('添加') || aria.includes('附件') || aria.includes('上传')) {
+                      candidates.push({el, left: r.left, right: r.right});
+                    }
+                  }
+                  if (candidates.length === 0) return false;
+                  candidates.sort((a, b) => a.left - b.left);
+                  candidates[0].el.click();
+                  return true;
+                }
+                """);
+            if (Boolean.TRUE.equals(clicked)) {
+                page.waitForTimeout(450);
+                log.debug("[元宝文件上传] 已通过JS点击左侧上传入口");
+            }
+        } catch (Exception e) {
+            log.debug("[元宝文件上传] 点击上传入口失败: {}", e.getMessage());
+        }
     }
 
     /**

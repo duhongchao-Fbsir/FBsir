@@ -52,7 +52,7 @@ export const ENGINE_CONFIGS = reactive([
     // 图标配置（支持URL或相对路径）
     icon: {
       type: 'url',              // 'element' | 'url' | 'local'
-      value: 'https://u3w.com/chatfile/Deepseek.png',
+      value: 'https://www.deepseek.com/favicon.ico',
     },
 
     // 消息类型配置
@@ -224,8 +224,8 @@ export const ENGINE_CONFIGS = reactive([
     type: SERVICE_TYPE.AI,
 
     icon: {
-      type: 'element',
-      value: 'Connection'
+      type: 'url',
+      value: 'https://yuanbao.tencent.com/favicon.ico',
     },
 
     messageTypes: {
@@ -252,46 +252,6 @@ export const ENGINE_CONFIGS = reactive([
     chatIdField: 'ybChatId',
 
     order: 4
-  },
-
-  // =========================================================================
-  // 文心一言（百度）配置（AI服务）
-  // =========================================================================
-  {
-    id: 'wenxin',
-    displayName: '文心一言',
-    description: '百度文心一言网页版对话（会话存 baidu_chat_id）',
-    type: SERVICE_TYPE.AI,
-
-    icon: {
-      type: 'element',
-      value: 'ChatDotRound'
-    },
-
-    messageTypes: {
-      checkLogin: 'WENXIN_CHECK_LOGIN',
-      scanLogin: 'WENXIN_SCAN_LOGIN',
-      query: 'AI_WENXIN_QUERY'
-    },
-
-    enabled: true,
-    loggedIn: false,
-    requireLogin: true,
-
-    options: [
-      {
-        id: 'enableFileUpload',
-        label: '上传文件',
-        defaultValue: false,
-        exclusive: [],
-        disabled: false
-      }
-    ],
-
-    // 与 index.vue userInfoReq.baiduChatId、库表 baidu_chat_id 一致
-    chatIdField: 'baiduChatId',
-
-    order: 5
   },
 
   // =========================================================================
@@ -345,7 +305,7 @@ export const ENGINE_CONFIGS = reactive([
     // 图标配置（支持URL或相对路径）
     icon: {
       type: 'url',              // 'element' | 'url' | 'local'
-      value: 'https://chat.gitee.com/ai-teammates/_next/static/media/Ai@2x.f426668a.gif',
+      value: 'https://gitee.com/favicon.ico',
     },
 
     // 消息类型配置

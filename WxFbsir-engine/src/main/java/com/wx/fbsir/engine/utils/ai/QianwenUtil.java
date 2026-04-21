@@ -5,8 +5,10 @@ import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Frame;
 import com.microsoft.playwright.options.LoadState;
 import com.microsoft.playwright.options.WaitUntilState;
+import com.wx.fbsir.engine.utils.common.FileDownloadUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.regex.Matcher;
@@ -19,6 +21,9 @@ import java.util.regex.Pattern;
 public class QianwenUtil {
 
     private static final Logger log = LoggerFactory.getLogger(QianwenUtil.class);
+
+    @Autowired
+    private FileDownloadUtil fileDownloadUtil;
 
     public static final String QIANWEN_HOME_URL = "https://www.qianwen.com/";
 
@@ -133,6 +138,25 @@ public class QianwenUtil {
             log.debug("[Qianwen] 解析会话ID失败: {}", e.getMessage());
         }
         return null;
+    }
+
+    /**
+     * 上传文件到千问输入区，优先走对话输入区定向上传，再降级到DOM通用上传。
+     */
+    public boolean uploadFile(Page page, String localFilePath) {
+        if (fileDownloadUtil.uploadComposerAreaFile(page, localFilePath, "[千问文件上传]")) {
+            return true;
+        }
+        return fileDownloadUtil.uploadViaDOM(page, localFilePath, new String[]{
+            "button:has-text('上传文件')",
+            "button:has-text('上传')",
+            "[role='button']:has-text('上传')",
+            "button:has-text('附件')",
+            "button:has-text('本地上传')",
+            "[aria-label*='上传']",
+            "[class*='upload']",
+            "[class*='attach']"
+        });
     }
 
     public String sendMessageAndWaitResponse(Page page, String query) {

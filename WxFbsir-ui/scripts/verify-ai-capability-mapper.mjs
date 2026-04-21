@@ -7,12 +7,24 @@ import {
   buildCompatibleAiPayload,
   normalizeAiCapabilities
 } from '../src/utils/aiCapabilityMapper.js'
+import { ENGINE_CONFIGS, SERVICE_TYPE } from '../src/config/engineConfig.js'
 
-const SHELVED = ['deepseek', 'gitee', 'doubao', 'qianwen', 'yuanbao', 'wenxin', 'mita']
+const SHELVED = ['deepseek', 'gitee', 'doubao', 'qianwen', 'yuanbao', 'mita']
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg || 'assertion failed')
 }
+
+function assertSameStringSet(a, b, label) {
+  const sa = new Set(a)
+  const sb = new Set(b)
+  for (const x of sa) assert(sb.has(x), `${label}: extra ${x}`)
+  for (const x of sb) assert(sa.has(x), `${label}: missing ${x}`)
+}
+
+const engineAiIds = ENGINE_CONFIGS.filter((c) => c.type === SERVICE_TYPE.AI).map((c) => c.id)
+assertSameStringSet(Object.keys(AI_CAPABILITY_MATRIX), SHELVED, 'AI_CAPABILITY_MATRIX vs SHELVED')
+assertSameStringSet(engineAiIds, SHELVED, 'ENGINE_CONFIGS(AI) vs SHELVED')
 
 for (const id of SHELVED) {
   assert(AI_CAPABILITY_MATRIX[id], `missing matrix: ${id}`)

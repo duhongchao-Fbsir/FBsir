@@ -124,7 +124,7 @@ export default {
       dynamicFields: [], // 动态表单字段配置
       requiredMaterials: [], // 必需材料
       uploadedMaterials: {}, // 上传的材料
-      baseUrl: process.env.VITE_APP_BASE_API || ''
+      baseUrl: (import.meta.env.VITE_APP_BASE_API || '')
     };
   },
   computed: {

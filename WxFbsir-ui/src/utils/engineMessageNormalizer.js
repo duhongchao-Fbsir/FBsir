@@ -17,7 +17,6 @@ export function inferAiTypeFromMessageType(messageType) {
   if (u.startsWith('AI_DOUBAO')) return 'doubao'
   if (u.startsWith('AI_QIANWEN') || u.startsWith('AI_TONGYI')) return 'qianwen'
   if (u.startsWith('AI_YUANBAO')) return 'yuanbao'
-  if (u.startsWith('AI_WENXIN')) return 'wenxin'
   if (u.startsWith('AI_MITA')) return 'mita'
   return ''
 }

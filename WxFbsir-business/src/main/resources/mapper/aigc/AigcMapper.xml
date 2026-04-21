@@ -97,9 +97,6 @@
                 <when test="aiName == 'gitee' or aiName == 'Gitee AI Chat'">
                     AND gitee_chat_id IS NOT NULL
                 </when>
-                <when test="aiName == 'wenxin' or aiName == '文心一言' or aiName == '文心'">
-                    AND baidu_chat_id IS NOT NULL
-                </when>
                 <when test="aiName == 'mita' or aiName == '秘塔' or aiName == 'metaso'">
                     AND metaso_chat_id IS NOT NULL
                 </when>
@@ -171,7 +168,7 @@
             share_img_url shareImgUrl,
             is_push isPush
         FROM wc_playwright_draft 
-        WHERE user_name = #{userId}
+        WHERE (user_id = #{userId} OR user_name = CAST(#{userId} AS CHAR))
         <if test="aiName != null and aiName != ''">
             AND ai_name = #{aiName}
         </if>
@@ -181,6 +178,25 @@
                  OR draft_content LIKE CONCAT('%', #{keyword}, '%'))
         </if>
         ORDER BY create_time DESC
+    </select>
+
+    <!-- 按主键查询单条草稿（须匹配当前用户） -->
+    <select id="getDraftById" resultType="java.util.Map">
+        SELECT
+            id,
+            task_id taskId,
+            keyword,
+            user_prompt userPrompt,
+            draft_content draftContent,
+            ai_name aiName,
+            DATE_FORMAT(create_time, '%Y-%c-%d %H:%i:%s') createTime,
+            share_url shareUrl,
+            share_img_url shareImgUrl,
+            is_push isPush
+        FROM wc_playwright_draft
+        WHERE id = #{draftId}
+          AND (user_id = #{userId} OR user_name = CAST(#{userId} AS CHAR))
+        LIMIT 1
     </select>
 
     <!-- 保存草稿 -->
@@ -194,6 +210,7 @@
             ai_name,
             create_time,
             user_name,
+            user_id,
             share_url,
             share_img_url,
             is_push
@@ -206,6 +223,7 @@
             #{aiName},
             NOW(),
             #{userName},
+            #{userId},
             #{shareUrl},
             #{shareImgUrl},
             COALESCE(#{isPush}, 0)
@@ -215,7 +233,7 @@
     <!-- 删除草稿 -->
     <delete id="deleteDraft" parameterType="java.util.Map">
         DELETE FROM wc_playwright_draft 
-        WHERE id = #{draftId} AND user_name = #{userId}
+        WHERE id = #{draftId} AND (user_id = #{userId} OR user_name = CAST(#{userId} AS CHAR))
     </delete>
 
     <!-- 🔥 根据sessionId获取聊天记录（返回所有AI会话ID，用于上下文复用） -->
@@ -297,6 +315,7 @@
             draft_content,
             ai_name,
             user_name,
+            user_id,
             share_url,
             share_img_url,
             create_time
@@ -307,6 +326,7 @@
             #{draftContent},
             #{aiName},
             #{userName},
+            #{userId},
             #{shareUrl},
             #{shareImgUrl},
             NOW()
@@ -337,17 +357,17 @@
                         AND wpd.user_prompt LIKE CONCAT('%', #{keyWord}, '%')
                     </if>
                     <if test="userId != null">
-                        AND wpd.user_name = #{userId}
+                        AND (wpd.user_id = #{userId} OR wpd.user_name = CAST(#{userId} AS CHAR))
                     </if>
                 ) ranked
                 WHERE ranked.rn = 1
             ) latest
-            LEFT JOIN sys_user u ON latest.user_name = u.user_id
+            LEFT JOIN sys_user u ON u.user_id = COALESCE(latest.user_id, CAST(latest.user_name AS UNSIGNED))
         ORDER BY latest.create_time DESC
     </select>
 
-    <!-- 🔥 获取指定task_id下的所有AI响应（参考旧项目cube-admin） -->
-    <select id="getPlayWrightDraftAiList" parameterType="java.lang.String" resultType="java.util.Map">
+    <!-- 🔥 获取指定task_id下的所有AI响应（须与当前用户一致，防止仅知 taskId 越权读取） -->
+    <select id="getPlayWrightDraftAiList" resultType="java.util.Map">
         SELECT
             CASE ai_name
                 WHEN 'deepseek' THEN 'deepseek'
@@ -358,8 +378,6 @@
                 WHEN 'doubao' THEN 'doubao'
                 WHEN '秘塔' THEN 'mita'
                 WHEN 'mita' THEN 'mita'
-                WHEN '百度' THEN 'wenxin'
-                WHEN 'wenxin' THEN 'wenxin'
                 WHEN '知乎直答' THEN 'zhzd'
                 WHEN 'kimi' THEN 'kimi'
                 WHEN 'gitee' THEN 'gitee'
@@ -388,6 +406,7 @@
             wc_playwright_draft
         WHERE
             task_id = #{taskId}
+            AND (user_id = #{userId} OR user_name = CAST(#{userId} AS CHAR))
         ORDER BY create_time DESC
     </select>
 
@@ -395,7 +414,7 @@
     <select id="getDraftContent" resultType="java.lang.String">
         SELECT draft_content
         FROM wc_playwright_draft
-        WHERE user_name = #{userId}
+        WHERE (user_id = #{userId} OR user_name = CAST(#{userId} AS CHAR))
           AND task_id = #{taskId}
           AND (
             ai_name = #{aiName}
@@ -404,7 +423,6 @@
             OR (LOWER(#{aiName}) = 'yuanbao' AND ai_name IN ('yuanbao', '腾讯元宝'))
             OR (LOWER(#{aiName}) = 'doubao' AND ai_name IN ('doubao', '豆包'))
             OR (LOWER(#{aiName}) = 'mita' AND ai_name IN ('mita', '秘塔'))
-            OR (LOWER(#{aiName}) = 'wenxin' AND ai_name IN ('wenxin', '百度'))
             OR (LOWER(#{aiName}) = 'gitee' AND ai_name IN ('gitee', 'Gitee AI Chat'))
           )
         ORDER BY create_time DESC

@@ -195,6 +195,11 @@
         </dependencies>
     </dependencyManagement>
 
+    <!--
+      主节点（Admin 主干）Maven 聚合范围：仅下列模块。
+      WxFbsir-engine 为副节点，使用独立 pom，故意不列入 <modules> — 主副节点分轨，非遗漏。
+      请勿将 Engine 并入本 reactor；变更前必读 docs/全局一致性对齐说明.md §1.4。
+    -->
     <modules>
         <module>WxFbsir-admin</module>
         <module>WxFbsir-framework</module>

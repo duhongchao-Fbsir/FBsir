@@ -55,7 +55,7 @@ public class DoubaoController extends StreamTaskHelper {
 
         BrowserSession session = null;
         try {
-            session = browserPool.acquirePersistent(userId, "doubao", false);
+            session = acquireDoubaoSessionWithHealth(userId);
 
             if (com.wx.fbsir.engine.playwright.login.manager.LoginStateManager.hasLoginState("doubao", userId)) {
                 try {
@@ -106,12 +106,12 @@ public class DoubaoController extends StreamTaskHelper {
 
         log.info("[Doubao扫码登录] 开始 - 用户: {}, 会话: {}", userId, sessionId);
 
-        StreamTask task = startStreamTask(userId, sessionId, 2000);
+        StreamTask task = startStreamTask(userId, sessionId, extractAiType(message), 2000);
         BrowserSession session = null;
 
         try {
             task.sendLog("正在打开豆包并唤起登录浮层（请点击截图中的「登录」若未自动弹出）...");
-            session = browserPool.acquirePersistent(userId, "doubao", false);
+            session = acquireDoubaoSessionWithHealth(userId);
             Page page = session.getOrCreatePage();
 
             if (!doubaoUtil.navigateToLoginPageAndOpenLoginLayer(page)) {
@@ -249,7 +249,7 @@ public class DoubaoController extends StreamTaskHelper {
             }
 
             task.sendLog("正在连接豆包...");
-            session = browserPool.acquirePersistent(userId, "doubao", false);
+            session = acquireDoubaoSessionWithHealth(userId);
 
             if (com.wx.fbsir.engine.playwright.login.manager.LoginStateManager.hasLoginState("doubao", userId)) {
                 try {
@@ -293,21 +293,16 @@ public class DoubaoController extends StreamTaskHelper {
                 }
             }
 
+            boolean uploadAttempted = false;
+            boolean uploadEffective = true;
             if (enableFileUpload && uploadedFileUrl != null && !uploadedFileUrl.isEmpty()) {
+                uploadAttempted = true;
                 task.sendLog("检测到文件，正在上传到豆包...");
                 FileDownloadUtil.UploadResult fileResult = fileDownloadUtil.downloadAndUploadWithFallback(
                     uploadedFileUrl,
                     page,
                     (p, localFilePath) -> doubaoUtil.uploadFile(p, localFilePath),
-                    () -> {
-                        try {
-                            page.locator("textarea, div[contenteditable='true']").first()
-                                .scrollIntoViewIfNeeded();
-                            page.waitForTimeout(400);
-                        } catch (Exception ignore) {
-                            // ignore
-                        }
-                    },
+                    null,
                     new String[]{
                         "button:has-text('上传文件')",
                         "button:has-text('上传')",
@@ -317,9 +312,56 @@ public class DoubaoController extends StreamTaskHelper {
                         "[class*='upload']"
                     }
                 );
+                uploadEffective = fileResult.isSuccess();
                 if (!fileResult.isSuccess()) {
                     task.sendLog("文件处理失败(" + fileResult.getErrorMessage() + ")，将继续发送文本消息");
                     log.warn("[Doubao咨询] 文件上传失败: {}", fileResult.getErrorMessage());
+                    if (shouldRetryUpload(fileResult.getErrorMessage())) {
+                        task.sendLog("检测到上传链路瞬态异常，正在恢复会话后重试上传...");
+                        BrowserSession recovered = acquireDoubaoSessionWithHealth(userId);
+                        if (session != recovered) {
+                            try {
+                                browserPool.destroy(session);
+                            } catch (Exception ignore) {
+                                // ignore
+                            }
+                            session = recovered;
+                        }
+                        page = session.getOrCreatePage();
+                        if (dbChatId != null && !dbChatId.isEmpty()) {
+                            doubaoUtil.navigateToChat(page, dbChatId);
+                        } else {
+                            doubaoUtil.checkLoginStatus(page, true);
+                        }
+                        if (enableFastMode || enableExpertMode) {
+                            doubaoUtil.applyConversationMode(page, enableFastMode, enableExpertMode);
+                            if (dbChatId != null && !dbChatId.isEmpty()) {
+                                doubaoUtil.navigateToChat(page, dbChatId);
+                            }
+                        }
+                        FileDownloadUtil.UploadResult retryResult = fileDownloadUtil.downloadAndUploadWithFallback(
+                            uploadedFileUrl,
+                            page,
+                            (p, localFilePath) -> doubaoUtil.uploadFile(p, localFilePath),
+                            null,
+                            new String[]{
+                                "button:has-text('上传文件')",
+                                "button:has-text('上传')",
+                                "[role='button']:has-text('上传')",
+                                "button:has-text('附件')",
+                                "[aria-label*='上传']",
+                                "[class*='upload']"
+                            }
+                        );
+                        if (retryResult.isSuccess()) {
+                            uploadEffective = true;
+                            task.sendLog("重试上传成功，继续执行问答");
+                        } else {
+                            uploadEffective = false;
+                            task.sendLog("重试上传仍失败(" + retryResult.getErrorMessage() + ")，将继续发送文本消息");
+                            log.warn("[Doubao咨询] 文件重试上传失败: {}", retryResult.getErrorMessage());
+                        }
+                    }
                 } else {
                     task.sendLog("文件已上传，等待平台解析...");
                     page.waitForTimeout(1200);
@@ -327,6 +369,7 @@ public class DoubaoController extends StreamTaskHelper {
             }
 
             task.sendLog("登录验证通过，准备发送问题...");
+            final Page activePage = page;
             long startTime = System.currentTimeMillis();
 
             task.startAutoProgress(count -> {
@@ -334,7 +377,7 @@ public class DoubaoController extends StreamTaskHelper {
                     long sec = (System.currentTimeMillis() - startTime) / 1000;
                     String logMessage = "豆包正在生成回复（已等待 " + sec + " 秒）...";
                     task.sendLog(logMessage);
-                    String shot = captureAndUpload(page, userId, "doubao_progress_" + count);
+                    String shot = captureAndUpload(activePage, userId, "doubao_progress_" + count);
                     if (shot != null) {
                         task.sendScreenshot(shot);
                     }
@@ -345,12 +388,12 @@ public class DoubaoController extends StreamTaskHelper {
                 }
             });
 
-            String answer = doubaoUtil.sendMessageAndWaitResponse(page, query, enableDeepThinking);
+            String answer = doubaoUtil.sendMessageAndWaitResponse(activePage, query, enableDeepThinking);
             task.stop();
 
-            page.waitForTimeout(1500);
+            activePage.waitForTimeout(1500);
             task.sendLog("正在提取会话信息...");
-            String newChatId = doubaoUtil.extractChatId(page);
+            String newChatId = doubaoUtil.extractChatId(activePage);
             String shareUrl = newChatId != null ? "https://www.doubao.com/chat/" + newChatId : null;
 
             Map<String, Object> resultData = new HashMap<>();
@@ -362,6 +405,13 @@ public class DoubaoController extends StreamTaskHelper {
             resultData.put("textContent", answer != null ? answer : "");
             resultData.put("answer", answer != null ? answer : "豆包回复完成，但获取内容失败");
             resultData.put("hasScreenshot", false);
+            Map<String, Object> qualityGate = com.wx.fbsir.engine.utils.ai.ResponseQualityGate.evaluate(
+                query, answer, uploadAttempted, uploadEffective, uploadedFileUrl
+            );
+            resultData.put("qualityGate", qualityGate);
+            if ("suspect".equals(String.valueOf(qualityGate.get("status")))) {
+                task.sendLog("结果门禁提示：" + qualityGate.get("summary"));
+            }
 
             task.sendSuccess("豆包回复完成", resultData);
             log.info("[Doubao咨询] 完成 - 会话: {}, 耗时: {}s", sessionId, resultData.get("elapsedTime"));
@@ -427,5 +477,50 @@ public class DoubaoController extends StreamTaskHelper {
             log.debug("[Doubao截图] 失败: {}", e.getMessage());
             return null;
         }
+    }
+
+    private BrowserSession acquireDoubaoSessionWithHealth(String userId) {
+        BrowserSession session = browserPool.acquirePersistent(userId, "doubao", false);
+        try {
+            Page page = session.getOrCreatePage();
+            page.url();
+            return session;
+        } catch (Exception firstEx) {
+            if (!isTargetClosed(firstEx)) {
+                throw (firstEx instanceof RuntimeException re) ? re : new RuntimeException(firstEx);
+            }
+            log.warn("[豆包会话] 检测到 Page/Context 失效，准备重建 - 用户: {}, 错误: {}", userId, firstEx.getMessage());
+            try {
+                browserPool.destroy(session);
+            } catch (Exception ignore) {
+                // ignore
+            }
+            BrowserSession rebuilt = browserPool.acquirePersistent(userId, "doubao", false);
+            Page rebuiltPage = rebuilt.getOrCreatePage();
+            rebuiltPage.url();
+            return rebuilt;
+        }
+    }
+
+    private boolean isTargetClosed(Exception ex) {
+        if (ex == null || ex.getMessage() == null) {
+            return false;
+        }
+        String msg = ex.getMessage().toLowerCase();
+        return msg.contains("target page, context or browser has been closed")
+            || msg.contains("targetclosederror")
+            || msg.contains("browser has been closed");
+    }
+
+    private boolean shouldRetryUpload(String errorMessage) {
+        if (errorMessage == null || errorMessage.isBlank()) {
+            return false;
+        }
+        String msg = errorMessage.toLowerCase();
+        return msg.contains("adopt")
+            || msg.contains("target page")
+            || msg.contains("targetclosederror")
+            || msg.contains("browser has been closed")
+            || msg.contains("execution context was destroyed");
     }
 }

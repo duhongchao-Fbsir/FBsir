@@ -322,7 +322,7 @@ public class DeepSeekController extends StreamTaskHelper {
         log.info("[DeepSeek扫码登录] 开始 - 用户: {}, 会话: {}, AI: {}", userId, sessionId, aiType);
         
         // 🔧 登录业务使用通用流式任务（发送 TASK_* 消息）
-        StreamTask task = startStreamTask(userId, sessionId, 2000);
+        StreamTask task = startStreamTask(userId, sessionId, extractAiType(message), 2000);
         BrowserSession session = null;
         
         try {
@@ -627,8 +627,11 @@ public class DeepSeekController extends StreamTaskHelper {
                     }
                 }
                 
+                boolean uploadAttempted = false;
+                boolean uploadEffective = true;
                 // 🔥 处理文件上传（如果有）— 使用通用文件处理工具
                 if (enableFileUpload && uploadedFileUrl != null && !uploadedFileUrl.isEmpty()) {
+                    uploadAttempted = true;
                     task.sendLog("检测到文件上传请求，正在处理...");
                     log.info("[DeepSeek咨询] 开始文件处理流程: {}", uploadedFileUrl);
                     
@@ -643,6 +646,7 @@ public class DeepSeekController extends StreamTaskHelper {
                             page.waitForTimeout(1500);
                         }
                     );
+                    uploadEffective = fileResult.isSuccess();
                     
                     if (fileResult.isSuccess()) {
                         task.sendLog("文件已成功上传到DeepSeek");
@@ -722,6 +726,13 @@ public class DeepSeekController extends StreamTaskHelper {
                     resultData.put("answer", answer != null ? answer : "DeepSeek回复完成，但获取内容失败");
                     resultData.put("hasScreenshot", false);
                     log.warn("[DeepSeek咨询] ⚠️ 截图失败，answer存储文本内容");
+                }
+                Map<String, Object> qualityGate = com.wx.fbsir.engine.utils.ai.ResponseQualityGate.evaluate(
+                    query, answer, uploadAttempted, uploadEffective, uploadedFileUrl
+                );
+                resultData.put("qualityGate", qualityGate);
+                if ("suspect".equals(String.valueOf(qualityGate.get("status")))) {
+                    task.sendLog("结果门禁提示：" + qualityGate.get("summary"));
                 }
                 
                 task.sendSuccess("DeepSeek回复完成", resultData);

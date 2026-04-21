@@ -40,13 +40,6 @@ export const AI_CAPABILITY_MATRIX = {
     multiMode: false,
     supportedOptionIds: ['enableFileUpload']
   },
-  wenxin: {
-    reasoning: false,
-    webSearch: false,
-    fileUpload: true,
-    multiMode: false,
-    supportedOptionIds: ['enableFileUpload']
-  },
   mita: {
     reasoning: false,
     webSearch: false,

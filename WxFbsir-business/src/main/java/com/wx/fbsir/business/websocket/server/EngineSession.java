@@ -30,8 +30,6 @@ public class EngineSession {
         Map.entry("AI_QIANWEN_SCAN_LOGIN", "QIANWEN_SCAN_LOGIN"),
         Map.entry("AI_YUANBAO_CHECK_LOGIN", "YUANBAO_CHECK_LOGIN"),
         Map.entry("AI_YUANBAO_SCAN_LOGIN", "YUANBAO_SCAN_LOGIN"),
-        Map.entry("AI_WENXIN_CHECK_LOGIN", "WENXIN_CHECK_LOGIN"),
-        Map.entry("AI_WENXIN_SCAN_LOGIN", "WENXIN_SCAN_LOGIN"),
         Map.entry("AI_MITA_CHECK_LOGIN", "MITA_CHECK_LOGIN"),
         Map.entry("AI_MITA_SCAN_LOGIN", "MITA_SCAN_LOGIN")
     );

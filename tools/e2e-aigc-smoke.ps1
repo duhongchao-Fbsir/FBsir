@@ -1,5 +1,4 @@
-# AIGC 真机烟测：顺序向各上架 AI 发一条 QUERY，记录首条终态消息（需 Admin+Engine+已登录各站时才有成功）
-$ErrorActionPreference = 'Continue'
+﻿# AIGC 鐪熸満鐑熸祴锛氶『搴忓悜鍚勪笂鏋?AI 鍙戜竴鏉?QUERY锛岃褰曢鏉＄粓鎬佹秷鎭紙闇€ Admin+Engine+宸茬櫥褰曞悇绔欐椂鎵嶆湁鎴愬姛锛?$ErrorActionPreference = 'Continue'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $base = 'http://127.0.0.1:8080'
@@ -12,7 +11,7 @@ $tok = $login.token
 $enc = [System.Uri]::EscapeDataString($tok)
 $wsUri = "ws://127.0.0.1:8080/ws/client?clientType=web&token=$enc"
 
-# 默认可跑全量；环境变量 E2E_ONE=1 时只跑 DeepSeek（本机已登录时通常能 RESULT_OK），用于快速验证编译/重启链路
+# 榛樿鍙窇鍏ㄩ噺锛涚幆澧冨彉閲?E2E_ONE=1 鏃跺彧璺?DeepSeek锛堟湰鏈哄凡鐧诲綍鏃堕€氬父鑳?RESULT_OK锛夛紝鐢ㄤ簬蹇€熼獙璇佺紪璇?閲嶅惎閾捐矾
 if ($env:E2E_ONE -eq '1') {
   $ais = @( @{ id = 'deepseek'; type = 'AI_DEEPSEEK_QUERY' } )
 } else {
@@ -21,7 +20,6 @@ if ($env:E2E_ONE -eq '1') {
     @{ id = 'doubao'; type = 'AI_DOUBAO_QUERY' },
     @{ id = 'qianwen'; type = 'AI_QIANWEN_QUERY' },
     @{ id = 'yuanbao'; type = 'AI_YUANBAO_QUERY' },
-    @{ id = 'wenxin'; type = 'AI_WENXIN_QUERY' },
     @{ id = 'mita'; type = 'AI_MITA_QUERY' },
     @{ id = 'gitee'; type = 'AI_GITEE_QUERY' }
   )
@@ -68,11 +66,9 @@ foreach ($row in $ais) {
     continue
   }
   $buf = New-Object byte[] 262144
-  # 丢弃 CONNECTED（整帧，支持分片）
-  $null = Receive-OneWsTextMessage -Socket $ws -Buffer $buf -DeadlineUtc ([DateTime]::UtcNow.AddSeconds(20))
-  # 避免脚本文件编码差异导致中文在 WebSocket 载荷中变形；
-  # 默认使用 ASCII 测试词，若需自定义可传 E2E_PROMPT 环境变量。
-  $testPrompt = $env:E2E_PROMPT
+  # 涓㈠純 CONNECTED锛堟暣甯э紝鏀寔鍒嗙墖锛?  $null = Receive-OneWsTextMessage -Socket $ws -Buffer $buf -DeadlineUtc ([DateTime]::UtcNow.AddSeconds(20))
+  # 閬垮厤鑴氭湰鏂囦欢缂栫爜宸紓瀵艰嚧涓枃鍦?WebSocket 杞借嵎涓彉褰紱
+  # 榛樿浣跨敤 ASCII 娴嬭瘯璇嶏紝鑻ラ渶鑷畾涔夊彲浼?E2E_PROMPT 鐜鍙橀噺銆?  $testPrompt = $env:E2E_PROMPT
   if ([string]::IsNullOrWhiteSpace($testPrompt)) { $testPrompt = 'E2E smoke reply OK only' }
   $msg = @{
     type     = $row.type
@@ -94,7 +90,7 @@ foreach ($row in $ais) {
   $sendSeg = New-Object System.ArraySegment[byte] -ArgumentList @(,$bytes)
   $null = $ws.SendAsync($sendSeg, [System.Net.WebSockets.WebSocketMessageType]::Text, $true, $ct).Wait(30000)
 
-  # 文心偶发在 120s 边界才回终态，放宽到 150s 降低误判 TIMEOUT
+  # 鏂囧績鍋跺彂鍦?120s 杈圭晫鎵嶅洖缁堟€侊紝鏀惧鍒?150s 闄嶄綆璇垽 TIMEOUT
   $deadline = [DateTime]::UtcNow.AddSeconds(150)
   $outcome = 'TIMEOUT'
   $detail = ''

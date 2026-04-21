@@ -1320,6 +1320,7 @@ CREATE TABLE `wc_chat_history`  (
   `kimi_chat_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT 'Kimi会话ID',
   `baidu_chat_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '百度AI会话ID',
   `zhzd_chat_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '知乎直答会话ID',
+  `gitee_chat_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT 'Gitee AI Chat 会话ID（与 AigcMapper 一致）',
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `idx_user_chat`(`user_id`, `chat_id`) USING BTREE,
   INDEX `idx_chat_create`(`chat_id`, `create_time` DESC) USING BTREE,
@@ -1342,10 +1343,12 @@ CREATE TABLE `wc_playwright_draft`  (
   `ai_name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT 'AI来源（deepseek/yuanbao等）',
   `create_time` datetime(0) NULL DEFAULT NULL COMMENT '创建时间',
   `user_name` bigint(4) NULL DEFAULT 0 COMMENT '创建人用户ID',
+  `user_id` bigint(20) NULL DEFAULT NULL COMMENT '创建人用户ID（与 user_name 冗余对齐，显式列）',
   `share_url` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT 'AI分享链接',
   `share_img_url` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT 'AI对话截图URL',
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `user_name`(`user_name`) USING BTREE,
+  INDEX `idx_user_id`(`user_id`) USING BTREE,
   INDEX `idx_task_id`(`task_id`) USING BTREE COMMENT '关联聊天历史记录索引'
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = 'AI记录扩展表（存储AI生成的多类型内容：文本/图片/视频等）' ROW_FORMAT = Dynamic;
 
@@ -1684,6 +1687,9 @@ CREATE TABLE `ws_host_whitelist` (
     `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_by` varchar(64) DEFAULT '' COMMENT '更新者',
     `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `host_type` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT 'engine' COMMENT '主机类型：engine/openclaw/hermes 等',
+    `health_check_url` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '健康检查 URL（HTTP 纳管主机）',
+    `online_status` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT 'offline' COMMENT '在线状态：online/offline 等',
     PRIMARY KEY (`id`),
     UNIQUE INDEX `uk_host_id` (`host_id`),
     INDEX `idx_is_team` (`is_team`),

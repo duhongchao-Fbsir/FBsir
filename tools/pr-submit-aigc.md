@@ -8,6 +8,8 @@
 |------|----------------|------|
 | Maven 全模块单测 | `mvn -q -DskipTests=false test`（根 `pom.xml`，需本机 Maven） | **通过** |
 | Engine 单测 | `WxFbsir-engine` 下 `mvn -q test` | **通过** |
+
+> **架构说明**：`WxFbsir-engine` **不在**根 `pom` 的 `<modules>` 中，属**主节点（Admin 主干）/ 副节点（Engine）**分轨；上表两条 Maven 命令**必须分两次执行**，此为设计如此，**不要**将 Engine 并入根 reactor。
 | 前端生产构建 | `WxFbsir-ui`：`npm run build:prod` | **通过** |
 | AI 能力映射校验 | `WxFbsir-ui`：`npm run test:aigc-mapper` | **通过** |
 | E2E P0 | `tools/e2e-aigc-regression.ps1 -Tier P0`（需 Admin `http://127.0.0.1:8080` + Engine 已登录各站） | **RESULT_OK=7/7** |

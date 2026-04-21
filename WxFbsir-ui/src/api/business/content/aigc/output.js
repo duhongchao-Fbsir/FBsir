@@ -27,10 +27,20 @@ export function generateOutputArtifact(data) {
  * @param {string} sessionId 会话ID
  * @returns {Promise}
  */
-export function exportOutputMarkdown(sessionId) {
+export function exportOutputMarkdown(sessionId, aiTypes = []) {
+  const normalizedAiTypes = Array.isArray(aiTypes)
+    ? aiTypes.map(item => String(item || '').trim()).filter(Boolean)
+    : []
   return axios({
     url: import.meta.env.VITE_APP_BASE_API + '/aigc/output/exportMarkdown/' + sessionId,
     method: 'get',
+    params: normalizedAiTypes.length > 0 ? { aiTypes: normalizedAiTypes } : undefined,
+    paramsSerializer: (params) => {
+      const search = new URLSearchParams()
+      const list = params.aiTypes || []
+      list.forEach(item => search.append('aiTypes', item))
+      return search.toString()
+    },
     responseType: 'blob',
     headers: {
       Authorization: 'Bearer ' + getToken()

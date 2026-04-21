@@ -83,7 +83,7 @@ class CapabilityNormalizerTest {
         JSONObject p = basePayload();
         p.put("enableFileUpload", true);
         p.put("uploadedFileUrl", "http://localhost/a.docx");
-        CapabilityNormalizer.NormalizedCapabilities n = CapabilityNormalizer.normalize("wenxin", p);
+        CapabilityNormalizer.NormalizedCapabilities n = CapabilityNormalizer.normalize("mita", p);
         assertTrue(n.isFileUploadEnabled());
         assertEquals("http://localhost/a.docx", n.getFileUploadUrl());
     }
