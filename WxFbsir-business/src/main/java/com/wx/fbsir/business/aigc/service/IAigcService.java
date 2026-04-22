@@ -73,6 +73,11 @@ public interface IAigcService {
     boolean deleteDraft(String draftId, Long userId);
 
     /**
+     * 按主键查询草稿（当前用户）
+     */
+    Map<String, Object> getDraftById(String draftId, Long userId);
+
+    /**
      * 获取可用的AI列表（硬编码）
      * 
      * @return AI列表
@@ -147,7 +152,7 @@ public interface IAigcService {
      * @param sessionId 会话ID
      * @return 输出物信息
      */
-    Map<String, Object> generateOutputArtifact(String sessionId);
+    Map<String, Object> generateOutputArtifact(String sessionId, List<String> aiTypes);
 
 
     /**
@@ -159,7 +164,7 @@ public interface IAigcService {
      * @param sessionId 会话ID
      * @return Markdown 内容
      */
-    Map<String, Object> exportOutputArtifactMarkdown(String sessionId);
+    Map<String, Object> exportOutputArtifactMarkdown(String sessionId, List<String> aiTypes);
 
 
     /**

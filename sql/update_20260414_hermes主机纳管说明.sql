@@ -1,0 +1,11 @@
+-- Hermes Agent HTTP 纳管（与 OpenClaw 共用 ws_host_whitelist，无表结构变更）
+-- host_type 取值：hermes
+-- 以下为可选示例（请修改 host_id / URL 后执行，避免与现网冲突）
+
+-- INSERT INTO `ws_host_whitelist` (
+--   `host_id`, `host_name`, `owner_name`, `is_team`, `status`, `remark`,
+--   `del_flag`, `create_by`, `host_type`, `health_check_url`, `online_status`
+-- ) VALUES (
+--   'hermes-demo-001', 'Hermes示例节点', 'admin', 0, 1, 'Hermes HTTP 纳管示例',
+--   0, 'admin', 'hermes', 'http://127.0.0.1:8080/health', 'offline'
+-- );

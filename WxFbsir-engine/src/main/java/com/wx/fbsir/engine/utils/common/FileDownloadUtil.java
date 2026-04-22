@@ -278,34 +278,77 @@ public class FileDownloadUtil {
     // =========================================================================
 
     /**
-     * 通过DOM定位 input[type=file] 元素上传文件（通用备用方案）
-     *
-     * 当平台专属的 PageFileUploader 不可用时，可使用此方法作为备用。
-     * 自动尝试多种策略定位文件上传入口。
-     *
-     * @param page          Playwright页面对象
-     * @param localFilePath 本地文件路径
-     * @param selectors     自定义CSS选择器数组（可为null，使用默认策略）
-     * @return 是否成功将文件送入页面
+     * DOM 上传尝试结果（用于向用户日志与 {@link UploadResult} 输出可排障摘要）。
+     * <p>
+     * 通过 DOM 定位 {@code input[type=file]} 或触发 FileChooser；详见 {@link #uploadViaDOMWithOutcome}。
      */
+    public static final class DomUploadOutcome {
+        private final boolean success;
+        private final String failureHint;
+
+        private DomUploadOutcome(boolean success, String failureHint) {
+            this.success = success;
+            this.failureHint = failureHint;
+        }
+
+        public static DomUploadOutcome ok() {
+            return new DomUploadOutcome(true, null);
+        }
+
+        public static DomUploadOutcome fail(String hint) {
+            return new DomUploadOutcome(false, hint != null ? hint : "unknown");
+        }
+
+        public boolean isSuccess() {
+            return success;
+        }
+
+        /** 失败时的简短说明（成功时为 null） */
+        public String getFailureHint() {
+            return failureHint;
+        }
+    }
+
     public boolean uploadViaDOM(Page page, String localFilePath, String[] selectors) {
+        return uploadViaDOMWithOutcome(page, localFilePath, selectors).isSuccess();
+    }
+
+    /**
+     * 与 {@link #uploadViaDOM(Page, String, String[])} 相同策略，但返回失败原因摘要便于排障。
+     * <p>
+     * 策略1 对多个 {@code input[type=file]} 从<strong>后往前</strong>尝试，避免 {@code first()} 命中头像区等隐藏控件。
+     */
+    public DomUploadOutcome uploadViaDOMWithOutcome(Page page, String localFilePath, String[] selectors) {
         Path filePath = Paths.get(localFilePath);
         if (!filePath.toFile().exists()) {
             log.error("[DOM上传] 文件不存在: {}", localFilePath);
-            return false;
+            return DomUploadOutcome.fail("本地文件不存在");
         }
 
-        // 策略1：直接查找 input[type=file]（最通用）
+        String lastErr = null;
+
+        // 策略1：直接查找 input[type=file]（最通用；多控件时优先较新的/靠后的）
         try {
             Locator fileInput = page.locator("input[type='file']");
-            if (fileInput.count() > 0) {
-                log.debug("[DOM上传] 找到 input[type=file] 元素，直接设置文件");
-                fileInput.first().setInputFiles(filePath);
-                log.info("[DOM上传] 文件已通过 input[type=file] 送入页面");
-                page.waitForTimeout(1000);
-                return true;
+            int cnt = fileInput.count();
+            if (cnt > 0) {
+                log.debug("[DOM上传] 找到 input[type=file] 共 {} 个，从后往前尝试 setInputFiles", cnt);
+                for (int idx = cnt - 1; idx >= 0; idx--) {
+                    try {
+                        fileInput.nth(idx).setInputFiles(filePath);
+                        log.info("[DOM上传] 文件已通过 input[type=file] 索引 {} 送入页面", idx);
+                        page.waitForTimeout(1000);
+                        return DomUploadOutcome.ok();
+                    } catch (Exception ex) {
+                        lastErr = "idx=" + idx + ": " + ex.getMessage();
+                        log.debug("[DOM上传] 策略1 索引 {} 失败: {}", idx, ex.getMessage());
+                    }
+                }
+            } else {
+                lastErr = "页面上无 input[type=file]";
             }
         } catch (Exception e) {
+            lastErr = e.getMessage();
             log.debug("[DOM上传] 策略1(input[type=file])失败: {}", e.getMessage());
         }
 
@@ -314,7 +357,7 @@ public class FileDownloadUtil {
             for (String selector : selectors) {
                 try {
                     Locator locator = page.locator(selector);
-                    if (locator.count() > 0 && locator.first().isVisible()) {
+                    if (locator.count() > 0 && locator.first().isVisible(new Locator.IsVisibleOptions().setTimeout(900))) {
                         log.debug("[DOM上传] 通过自定义选择器触发文件选择器: {}", selector);
                         Locator button = locator.first();
                         FileChooser fileChooser = page.waitForFileChooser(
@@ -323,9 +366,10 @@ public class FileDownloadUtil {
                         fileChooser.setFiles(filePath);
                         page.waitForTimeout(1000);
                         log.info("[DOM上传] 文件已通过自定义选择器送入页面");
-                        return true;
+                        return DomUploadOutcome.ok();
                     }
                 } catch (Exception e) {
+                    lastErr = "custom:" + selector + ":" + e.getMessage();
                     log.debug("[DOM上传] 自定义选择器 {} 失败: {}", selector, e.getMessage());
                 }
             }
@@ -335,12 +379,19 @@ public class FileDownloadUtil {
         String[] commonSelectors = {
             "button:has-text('上传')",
             "[role='button']:has-text('上传')",
+            "button:has-text('上传图片')",
+            "button:has-text('图片')",
+            "[role='button']:has-text('图片')",
+            "button:has-text('添加')",
+            "[role='button']:has-text('添加')",
             "label[for]:has-text('上传')",
             "button:has-text('Upload')",
             "button:has-text('Attach')",
             "[aria-label='上传文件']",
             "[aria-label='Upload file']",
             "[aria-label='Attach']",
+            "[aria-label*='添加']",
+            "[aria-label*='图片']",
             "div.upload-trigger",
             "button.upload-btn",
             "button.attach-btn",
@@ -348,7 +399,7 @@ public class FileDownloadUtil {
         for (String selector : commonSelectors) {
             try {
                 Locator locator = page.locator(selector);
-                if (locator.count() > 0 && locator.first().isVisible()) {
+                if (locator.count() > 0 && locator.first().isVisible(new Locator.IsVisibleOptions().setTimeout(900))) {
                     log.debug("[DOM上传] 通过通用选择器触发: {}", selector);
                     Locator button = locator.first();
                     FileChooser fileChooser = page.waitForFileChooser(
@@ -357,15 +408,46 @@ public class FileDownloadUtil {
                     fileChooser.setFiles(filePath);
                     page.waitForTimeout(1000);
                     log.info("[DOM上传] 文件已通过通用选择器送入页面");
-                    return true;
+                    return DomUploadOutcome.ok();
                 }
             } catch (Exception e) {
+                lastErr = "common:" + selector + ":" + e.getMessage();
                 log.debug("[DOM上传] 通用选择器 {} 失败: {}", selector, e.getMessage());
             }
         }
 
-        log.warn("[DOM上传] 所有DOM上传策略均失败");
-        return false;
+        String hint = "策略用尽; 策略1末错=" + (lastErr != null ? lastErr : "无")
+            + "; pageUrl=" + safePageUrlForLog(page);
+        try {
+            int n = page.locator("input[type='file']").count();
+            hint += "; fileInputCount=" + n;
+        } catch (Exception ignore) {
+            hint += "; fileInputCount=?";
+        }
+        log.warn("[DOM上传] 所有DOM上传策略均失败 — {}", hint);
+        return DomUploadOutcome.fail(hint);
+    }
+
+    private static String safePageUrlForLog(Page page) {
+        try {
+            String u = page.url();
+            return u != null && !u.isEmpty() ? u : "(empty)";
+        } catch (Exception e) {
+            return "(url error: " + e.getMessage() + ")";
+        }
+    }
+
+    /**
+     * 失败时输出当前页与 file 控件数量，便于对照 Playwright 日志排障。
+     */
+    public void logPageUploadDiagnostics(Page page, String prefix) {
+        String p = (prefix != null && !prefix.isBlank()) ? prefix : "[上传诊断]";
+        try {
+            int n = page.locator("input[type='file']").count();
+            log.warn("{} url={} input[type=file] count={}", p, safePageUrlForLog(page), n);
+        } catch (Exception e) {
+            log.warn("{} 诊断异常: {}", p, e.getMessage());
+        }
     }
 
     /**
@@ -373,6 +455,184 @@ public class FileDownloadUtil {
      */
     public boolean uploadViaDOM(Page page, String localFilePath) {
         return uploadViaDOM(page, localFilePath, null);
+    }
+
+    /**
+     * 对话页「输入区」优先的文件上传（千问/秘塔/豆包等共用）。
+     * <p>
+     * 避免 {@link #uploadViaDOM} 对 {@code input[type=file]} 使用 {@code first()} 时误命中头像等隐藏控件。
+     */
+    public boolean uploadComposerAreaFile(Page page, String localFilePath, String logPrefix) {
+        String prefix = (logPrefix != null && !logPrefix.isBlank()) ? logPrefix : "[对话上传]";
+        Path path = Paths.get(localFilePath);
+        if (!path.toFile().exists()) {
+            log.error("{} 文件不存在: {}", prefix, localFilePath);
+            return false;
+        }
+        log.info("{} 开始: {}", prefix, localFilePath);
+        try {
+            page.locator("textarea, div[contenteditable='true']").first().scrollIntoViewIfNeeded();
+            page.waitForTimeout(400);
+        } catch (Exception e) {
+            log.debug("{} 滚动输入区: {}", prefix, e.getMessage());
+        }
+
+        String[] scopedInputSelectors = {
+            "[class*='yiyan'] input[type='file']",
+            "[class*='ernie'] input[type='file']",
+            "[class*='Ernie'] input[type='file']",
+            "footer input[type='file']",
+            "[class*='composer'] input[type='file']",
+            "[class*='Composer'] input[type='file']",
+            "[class*='chat-input'] input[type='file']",
+            "[class*='ChatInput'] input[type='file']",
+            "[class*='input-area'] input[type='file']",
+            "[class*='footer'] input[type='file']",
+            "main input[type='file']"
+        };
+        for (String sel : scopedInputSelectors) {
+            try {
+                Locator loc = page.locator(sel);
+                int n = loc.count();
+                if (n <= 0) {
+                    continue;
+                }
+                for (int idx = n - 1; idx >= 0; idx--) {
+                    try {
+                        loc.nth(idx).setInputFiles(path);
+                        log.info("{} 已通过限定选择器 {} (索引 {}) 设置文件", prefix, sel, idx);
+                        page.waitForTimeout(1000);
+                        return true;
+                    } catch (Exception ex) {
+                        log.debug("{} {} 索引 {}: {}", prefix, sel, idx, ex.getMessage());
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("{} 选择器 {} 异常: {}", prefix, sel, e.getMessage());
+            }
+        }
+
+        try {
+            Locator all = page.locator("input[type='file']");
+            int cnt = all.count();
+            for (int idx = cnt - 1; idx >= 0; idx--) {
+                try {
+                    all.nth(idx).setInputFiles(path);
+                    log.info("{} 已通过全局 file input 索引 {} 设置文件", prefix, idx);
+                    page.waitForTimeout(1000);
+                    return true;
+                } catch (Exception ex) {
+                    log.debug("{} 全局索引 {} 失败: {}", prefix, idx, ex.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            log.debug("{} 遍历全局 file input 失败: {}", prefix, e.getMessage());
+        }
+
+        String[] menuItemSelectors = {
+            "li:has-text('本地上传')",
+            "div[role='menuitem']:has-text('本地上传')",
+            "button:has-text('本地上传')",
+            "div:has-text('本地上传')",
+            "li:has-text('上传图片')",
+            "div[role='menuitem']:has-text('上传图片')",
+            "button:has-text('上传图片')",
+            "div:has-text('上传图片')",
+            "li:has-text('图片上传')",
+            "button:has-text('图片上传')",
+            "span:has-text('本地上传')",
+            "li:has-text('上传本地文件')",
+            "div:has-text('上传本地文件')",
+            "button:has-text('本地文件')"
+        };
+        String[] menuOpeners = {
+            "[class*='composer'] [aria-label*='上传']",
+            "[class*='composer'] [aria-label*='附件']",
+            "[class*='composer'] [aria-label*='添加']",
+            "[class*='composer'] [aria-label*='图片']",
+            "footer [aria-label*='上传']",
+            "footer [aria-label*='附件']",
+            "footer [aria-label*='添加']",
+            "footer [aria-label*='图片']",
+            "[class*='toolbar'] button[aria-label*='上传']",
+            "[class*='toolbar'] button[aria-label*='附件']",
+            "[class*='toolbar'] button[aria-label*='添加']",
+            "[class*='toolbar'] button[aria-label*='图片']",
+            "button[aria-label*='添加']",
+            "button[aria-label*='图片']",
+            "div[role='button'][aria-label*='添加']",
+            "div[role='button'][aria-label*='图片']",
+            "button:has-text('添加')",
+            "button:has-text('图片')"
+        };
+        for (String openerSel : menuOpeners) {
+            try {
+                Locator openerGroup = page.locator(openerSel);
+                if (openerGroup.count() == 0) {
+                    continue;
+                }
+                Locator opener = openerGroup.first();
+                if (!opener.isVisible(new Locator.IsVisibleOptions().setTimeout(900))) {
+                    continue;
+                }
+                opener.click(new Locator.ClickOptions().setTimeout(4000));
+                page.waitForTimeout(500);
+                for (String itemSel : menuItemSelectors) {
+                    try {
+                        Locator itemGroup = page.locator(itemSel);
+                        if (itemGroup.count() == 0) {
+                            continue;
+                        }
+                        Locator item = itemGroup.first();
+                        if (!item.isVisible(new Locator.IsVisibleOptions().setTimeout(1200))) {
+                            continue;
+                        }
+                        FileChooser chooser = page.waitForFileChooser(() ->
+                            item.click(new Locator.ClickOptions().setTimeout(5000)));
+                        chooser.setFiles(path);
+                        log.info("{} 菜单路径 {} -> {} 成功", prefix, openerSel, itemSel);
+                        page.waitForTimeout(1000);
+                        return true;
+                    } catch (Exception ignore) {
+                        // try next item
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("{} 打开菜单 {} 失败: {}", prefix, openerSel, e.getMessage());
+            }
+        }
+
+        String[] fileChooserTriggers = {
+            "button:has-text('上传文件')",
+            "[role='button']:has-text('上传文件')",
+            "button:has-text('本地上传')",
+            "div[role='button']:has-text('上传')",
+            "[aria-label*='上传文件']",
+            "[aria-label*='本地上传']"
+        };
+        for (String sel : fileChooserTriggers) {
+            try {
+                Locator btnGroup = page.locator(sel);
+                if (btnGroup.count() == 0) {
+                    continue;
+                }
+                Locator btn = btnGroup.first();
+                if (!btn.isVisible(new Locator.IsVisibleOptions().setTimeout(800))) {
+                    continue;
+                }
+                FileChooser chooser = page.waitForFileChooser(() ->
+                    btn.click(new Locator.ClickOptions().setTimeout(5000)));
+                chooser.setFiles(path);
+                log.info("{} 通过显式触发器 {} 成功", prefix, sel);
+                page.waitForTimeout(1000);
+                return true;
+            } catch (Exception e) {
+                log.debug("{} 触发器 {} 失败: {}", prefix, sel, e.getMessage());
+            }
+        }
+
+        log.warn("{} 所有策略均未成功", prefix);
+        return false;
     }
 
     // =========================================================================
@@ -541,6 +801,7 @@ public class FileDownloadUtil {
             }
 
             // 第3步：尝试平台专属上传
+            String platformHint = "跳过(无平台上传器)";
             if (uploader != null) {
                 try {
                     log.info("[文件处理-降级模式] 尝试平台专属上传...");
@@ -549,21 +810,27 @@ public class FileDownloadUtil {
                         log.info("[文件处理-降级模式] 平台专属上传成功");
                         return UploadResult.success();
                     }
-                    log.warn("[文件处理-降级模式] 平台专属上传失败，降级到DOM方式");
+                    platformHint = "平台上传器返回 false（未将文件送入页面或入口未命中）";
+                    log.warn("[文件处理-降级模式] {}，降级到DOM — url={}", platformHint, safePageUrlForLog(page));
                 } catch (Exception e) {
-                    log.warn("[文件处理-降级模式] 平台专属上传异常，降级到DOM方式: {}", e.getMessage());
+                    platformHint = e.getClass().getSimpleName() + ": " + e.getMessage();
+                    log.warn("[文件处理-降级模式] 平台专属上传异常，降级到DOM — {}", platformHint, e);
                 }
             }
 
             // 第4步：降级 — DOM通用上传
             log.info("[文件处理-降级模式] 使用DOM通用上传...");
-            boolean domSuccess = uploadViaDOM(page, localFilePath, domSelectors);
-            if (domSuccess) {
+            DomUploadOutcome domOutcome = uploadViaDOMWithOutcome(page, localFilePath, domSelectors);
+            if (domOutcome.isSuccess()) {
                 log.info("[文件处理-降级模式] DOM通用上传成功");
                 return UploadResult.success();
             }
 
-            return UploadResult.fail("平台专属上传和DOM通用上传均失败", UploadResult.ErrorType.UPLOAD_FAILED);
+            logPageUploadDiagnostics(page, "[文件处理-降级模式]");
+            String combined = String.format("平台[%s] | DOM[%s]", platformHint,
+                domOutcome.getFailureHint() != null ? domOutcome.getFailureHint() : "unknown");
+            log.error("[文件处理-降级模式] 上传失败 — {}", combined);
+            return UploadResult.fail(combined, UploadResult.ErrorType.UPLOAD_FAILED);
 
         } catch (Exception e) {
             log.error("[文件处理-降级模式] 异常: {}", e.getMessage(), e);
@@ -709,7 +976,7 @@ public class FileDownloadUtil {
         try {
             String tempDir = System.getProperty("java.io.tmpdir");
             String fileName = extractFileName(fileUrl);
-            String localFilePath = tempDir + File.separator + fileName;
+            String localFilePath = buildUniqueTempPath(tempDir, fileName);
 
             log.debug("[文件下载] 开始下载: {} -> {}", fileUrl, localFilePath);
 
@@ -813,6 +1080,20 @@ public class FileDownloadUtil {
         } catch (Exception e) {
             log.warn("[文件清理] 清理临时文件失败: {} - {}", localFilePath, e.getMessage());
         }
+    }
+
+    /**
+     * 生成唯一临时文件路径，避免并发多AI任务下载同名文件时互相覆盖/清理。
+     */
+    private String buildUniqueTempPath(String tempDir, String originalFileName) {
+        String safeName = (originalFileName == null || originalFileName.isBlank())
+            ? ("upload_" + UUID.randomUUID())
+            : originalFileName;
+        int dotIdx = safeName.lastIndexOf('.');
+        String base = dotIdx > 0 ? safeName.substring(0, dotIdx) : safeName;
+        String ext = (dotIdx > 0 && dotIdx < safeName.length() - 1) ? safeName.substring(dotIdx) : "";
+        String unique = base + "_" + UUID.randomUUID().toString().replace("-", "") + ext;
+        return tempDir + File.separator + unique;
     }
 
     // =========================================================================

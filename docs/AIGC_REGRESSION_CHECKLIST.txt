@@ -1,0 +1,28 @@
+AIGC 发布前回归清单（DeepSeek + Gitee）
+========================================
+
+前置：MySQL8+、Redis、Business、Engine、前端已部署；用户已配置 hostId；Gitee/DeepSeek 已在登录管理器完成扫码（如需）。
+
+1. 连接与主机
+   - 打开 AI 助手页，确认 WebSocket 连接成功。
+   - /aigc 相关接口 engineOnline 与真实 Engine 状态一致。
+
+2. DeepSeek
+   - 新对话：仅启用 DeepSeek，发送纯文本，能返回结果且会话可续问（deepseekChatId 写入）。
+   - 快速模式 / 专家模式切换后发送，模式与首页标识一致。
+   - 开启上传文件：发送带附件请求，附件不丢失。
+
+3. Gitee
+   - 勾选「仓库问答」：仓库下拉在登录检测完成后可选；选择仓库后发送，payload 含 repositoryName。
+   - 开启上传文件 + 仓库问答：模式切换后会话恢复，文件可上传。
+   - 续问：同一前端 chatId 下 giteeChatId 复用。
+
+4. 多 AI
+   - 同时启用 DeepSeek + Gitee，同一次发送两者均完成或分别失败时，任务区状态与「发送中」一致；无实际未发送仍显示执行中。
+
+5. 数据
+   - 历史记录、草稿列表可打开；无 SQL 报错（尤其 only_full_group_by）。
+   - 新库：已按 sql/MIGRATION_ORDER.txt 执行增量脚本，无缺失列。
+
+6. 能力名（可选）
+   - Engine 能力列表含 DEEPSEEK_CHECK_LOGIN、GITEE_CHECK_LOGIN 等；旧别名 AI_*_CHECK_LOGIN 在 Engine 与主节点侧均已兼容。

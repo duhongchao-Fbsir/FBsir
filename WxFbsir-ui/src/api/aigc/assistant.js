@@ -9,7 +9,10 @@ export function sendAiRequest(data) {
   })
 }
 
-// 获取AI列表
+/**
+ * 获取后端上架 AI 列表（GET /aigc/ai/list）。
+ * 与 `src/config/engineConfig.js` 中 ENGINE_CONFIGS 的 id/types 需保持一致；页面展示仍以 ENGINE_CONFIGS 为真源。
+ */
 export function getAiList() {
   return request({
     url: '/aigc/ai/list',

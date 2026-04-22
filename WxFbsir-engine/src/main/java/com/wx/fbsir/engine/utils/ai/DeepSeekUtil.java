@@ -468,7 +468,7 @@ public class DeepSeekUtil {
             // 等待页面稳定
             page.waitForLoadState(LoadState.DOMCONTENTLOADED);
             page.waitForTimeout(1500);
-            
+
             toggleButtonIfNeeded(page, "深度思考", enableDeepThinking);
             toggleButtonIfNeeded(page, "联网搜索", enableWebSearch);
             
@@ -486,6 +486,125 @@ public class DeepSeekUtil {
         } catch (Exception e) {
             log.error("[DeepSeek] 发送消息或接收回复失败", e);
             throw new RuntimeException("DeepSeek操作失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 切换会话模式（快速/专家）
+     * 规则：
+     * 1. 必须在首页切换（按产品交互要求）
+     * 2. 必须校验目标模式为选中态（不是看文案）
+     * 3. 切换失败直接抛错，避免“假切换”
+     */
+    public void applyConversationMode(Page page, boolean enableFastMode, boolean enableExpertMode) {
+        if (!enableFastMode && !enableExpertMode) {
+            return;
+        }
+        if (enableFastMode && enableExpertMode) {
+            throw new RuntimeException("快速模式与专家模式不能同时开启");
+        }
+
+        String targetMode = enableExpertMode ? "专家模式" : "快速模式";
+        String otherMode = enableExpertMode ? "快速模式" : "专家模式";
+
+        // 按需求固定回到首页切换模式
+        try {
+            page.navigate(DEEPSEEK_HOME_URL, new Page.NavigateOptions()
+                .setTimeout(15000)
+                .setWaitUntil(WaitUntilState.DOMCONTENTLOADED));
+            page.waitForLoadState(LoadState.DOMCONTENTLOADED);
+            page.waitForTimeout(1200);
+        } catch (Exception e) {
+            throw new RuntimeException("切换模式前返回首页失败: " + e.getMessage(), e);
+        }
+
+        // 最多尝试3轮：点击目标模式 -> 校验首页模式标志文案
+        String markerText = "使用" + targetMode + "开始对话";
+        for (int i = 0; i < 3; i++) {
+            clickModeOption(page, targetMode);
+            page.waitForTimeout(600);
+            if (isHomeModeMarkerVisible(page, markerText)) {
+                log.info("[DeepSeek] 首页模式切换成功: {}", markerText);
+                return;
+            }
+        }
+
+        String visibleMarker = detectVisibleModeMarker(page);
+        throw new RuntimeException("模式切换未生效，目标模式=" + targetMode +
+            "，目标标志='" + markerText + "'" +
+            "，当前标志=" + visibleMarker);
+    }
+
+    private void clickModeOption(Page page, String modeText) {
+        String[] optionSelectors = {
+            "button:has-text('" + modeText + "')",
+            "div[role='button']:has-text('" + modeText + "')",
+            "[role='menuitem']:has-text('" + modeText + "')",
+            "span:has-text('" + modeText + "')"
+        };
+
+        for (String selector : optionSelectors) {
+            try {
+                Locator option = page.locator(selector).first();
+                if (option.count() > 0 && option.isVisible(new Locator.IsVisibleOptions().setTimeout(1200))) {
+                    option.click(new Locator.ClickOptions().setTimeout(3000).setForce(true));
+                    return;
+                }
+            } catch (Exception ignore) {
+                // 尝试下一个
+            }
+        }
+    }
+
+    private boolean isHomeModeMarkerVisible(Page page, String markerText) {
+        String[] selectors = {
+            "text=" + markerText,
+            "div:has-text('" + markerText + "')",
+            "span:has-text('" + markerText + "')",
+            "h1:has-text('" + markerText + "')",
+            "h2:has-text('" + markerText + "')",
+            "h3:has-text('" + markerText + "')"
+        };
+        for (String selector : selectors) {
+            try {
+                Locator marker = page.locator(selector).first();
+                if (marker.count() > 0 && marker.isVisible(new Locator.IsVisibleOptions().setTimeout(500))) {
+                    return true;
+                }
+            } catch (Exception ignore) {
+                // 尝试下一个
+            }
+        }
+        return false;
+    }
+
+    private String detectVisibleModeMarker(Page page) {
+        try {
+            Object obj = page.evaluate("""
+                () => {
+                    const visible = (el) => {
+                        if (!el) return false;
+                        const style = window.getComputedStyle(el);
+                        if (!style || style.display === 'none' || style.visibility === 'hidden') return false;
+                        const rect = el.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0;
+                    };
+                    const nodes = Array.from(document.querySelectorAll('h1,h2,h3,div,span,p'));
+                    const marker = nodes.find(el => {
+                        if (!visible(el)) return false;
+                        const txt = (el.innerText || '').trim();
+                        return txt.includes('使用') && txt.includes('模式') && txt.includes('开始对话');
+                    });
+                    if (marker) {
+                        return (marker.innerText || '').trim();
+                    }
+                    return '未检测到模式标志';
+                }
+            """);
+            return obj != null ? obj.toString() : "未检测到模式标志";
+        } catch (Exception e) {
+            log.warn("[DeepSeek] 读取首页模式标志失败: {}", e.getMessage());
+            return "读取模式标志失败";
         }
     }
 
@@ -563,20 +682,47 @@ public class DeepSeekUtil {
                 
                 inputBox.fill(userPrompt);
                 log.info("[DeepSeek] 用户指令已自动输入完成");
-                
-                int times = 3;
-                String inputText = inputBox.textContent();
-                while (inputText != null && !inputText.isEmpty()) {
-                    inputBox.press("Enter");
-                    inputText = inputBox.textContent();
-                    page.waitForTimeout(1000);
-                    if(times-- < 0) {
-                        throw new RuntimeException("指令输入失败");
+
+                // 先尝试回车发送，再用按钮兜底，避免仅靠textarea文本判断导致误判
+                String initialValue = safeReadInputValue(inputBox);
+                int beforePromptCount = countPromptOccurrences(page, userPrompt);
+                inputBox.press("Enter");
+                page.waitForTimeout(1000);
+
+                if (isMessageSubmitted(page, inputBox, initialValue, userPrompt, beforePromptCount)) {
+                    log.info("[DeepSeek] 消息发送成功（Enter）");
+                    return true;
+                }
+
+                String[] sendButtonSelectors = {
+                    "button:has-text('发送')",
+                    "button:has-text('Send')",
+                    "button[type='submit']",
+                    "div[role='button']:has-text('发送')",
+                    "button.ds-icon-button:has(svg)",
+                    "button[aria-label*='发送']",
+                    "button[aria-label*='Send']",
+                    "button[class*='send']",
+                    "div[role='button'][aria-label*='发送']"
+                };
+
+                for (String selector : sendButtonSelectors) {
+                    try {
+                        Locator sendButton = page.locator(selector).first();
+                        if (sendButton.count() > 0 && sendButton.isVisible(new Locator.IsVisibleOptions().setTimeout(800))) {
+                            sendButton.click(new Locator.ClickOptions().setTimeout(3000).setForce(true));
+                            page.waitForTimeout(1000);
+                            if (isMessageSubmitted(page, inputBox, initialValue, userPrompt, beforePromptCount)) {
+                                log.info("[DeepSeek] 消息发送成功（按钮兜底）");
+                                return true;
+                            }
+                        }
+                    } catch (Exception ignore) {
+                        // 尝试下一个发送按钮选择器
                     }
                 }
-                
-                log.info("[DeepSeek] 消息发送成功");
-                return true;
+
+                throw new RuntimeException("指令输入后未检测到消息成功提交");
             } else {
                 log.error("[DeepSeek] 未找到输入框");
                 return false;
@@ -585,6 +731,65 @@ public class DeepSeekUtil {
             log.error("[DeepSeek] 填充或发送消息失败", e);
             return false;
         }
+    }
+
+    private String safeReadInputValue(Locator inputBox) {
+        try {
+            String value = inputBox.inputValue();
+            return value == null ? "" : value.trim();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private boolean isMessageSubmitted(Page page, Locator inputBox, String beforeValue, String userPrompt, int beforePromptCount) {
+        try {
+            String currentValue = safeReadInputValue(inputBox);
+            if (currentValue.isEmpty() || !currentValue.equals(beforeValue)) {
+                return true;
+            }
+
+            if (countPromptOccurrences(page, userPrompt) > beforePromptCount) {
+                return true;
+            }
+
+            Locator stopButton = page.locator("button:has-text('停止'), button:has-text('Stop')").first();
+            if (stopButton.count() > 0 && stopButton.isVisible(new Locator.IsVisibleOptions().setTimeout(600))) {
+                return true;
+            }
+        } catch (Exception ignore) {
+            // 忽略校验异常，按未提交处理
+        }
+        return false;
+    }
+
+    private int countPromptOccurrences(Page page, String prompt) {
+        if (prompt == null || prompt.isBlank()) {
+            return 0;
+        }
+        try {
+            Object raw = page.evaluate("""
+                (text) => {
+                    const bodyText = (document.body && document.body.innerText) ? document.body.innerText : "";
+                    if (!bodyText || !text) return 0;
+                    let count = 0;
+                    let idx = 0;
+                    while (true) {
+                        idx = bodyText.indexOf(text, idx);
+                        if (idx < 0) break;
+                        count++;
+                        idx += text.length;
+                    }
+                    return count;
+                }
+            """, prompt);
+            if (raw instanceof Number n) {
+                return n.intValue();
+            }
+        } catch (Exception ignore) {
+            // 忽略统计异常
+        }
+        return 0;
     }
 
     /**

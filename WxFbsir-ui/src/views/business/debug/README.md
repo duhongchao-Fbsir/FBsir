@@ -314,9 +314,9 @@ WxFbsir-ui/
 
 ## 📚 相关文档
 
-- [WebSocket通信完整指南](../../../../docs/WebSocket通信完整指南.md) - 深入了解WebSocket通信机制
-- [快速入门 - 5分钟实现你的第一个能力](../../../../docs/WebSocket通信完整指南.md#0-快速入门---5分钟实现你的第一个能力) - 开发新能力
-- [流式输出 vs 单次输出完整指南](../../../../docs/WebSocket通信完整指南.md#12-流式输出-vs-单次输出完整指南) - 选择合适的实现方式
+- [WebSocket通信完整指南](../../../../../docs/功能说明/engine/WebSocket通信完整指南.md) - 深入了解WebSocket通信机制
+- [快速入门 - 5分钟实现你的第一个能力](../../../../../docs/功能说明/engine/WebSocket通信完整指南.md#0-快速入门---5分钟实现你的第一个能力) - 开发新能力
+- [流式输出 vs 单次输出完整指南](../../../../../docs/功能说明/engine/WebSocket通信完整指南.md#12-流式输出-vs-单次输出完整指南) - 选择合适的实现方式
 - [演示能力使用指南](../../../../WxFbsir-engine/src/main/java/com/wx/fbsir/engine/controller/demo/README.md) - 完整示例代码
 
 ---

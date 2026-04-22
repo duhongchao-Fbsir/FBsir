@@ -110,6 +110,7 @@
 <script setup>
 import { ElMessageBox, ElMessage } from "element-plus"
 import { getCodeImg, register } from "@/api/login"
+import request from "@/utils/request"
 import defaultSettings from '@/settings'
 
 const footerContent = defaultSettings.footerContent
@@ -118,7 +119,6 @@ const route = useRoute()
 const { proxy } = getCurrentInstance()
 const registerEnabled = ref(false)
 const agree = ref(false)
-const baseApi = (import.meta.env.VITE_APP_BASE_API || "").replace(/\/$/, "")
 const lastUsedProvider = ref("")
 
 const registerForm = ref({
@@ -232,9 +232,23 @@ function showRegisterSuccess(username) {
   })
 }
 
-function handleGiteeLogin() {
+async function handleGiteeLogin() {
   setLastUsed("gitee")
-  window.location.href = `${baseApi}/gitlogin`
+  try {
+    const probe = await request({
+      url: "/gitee/oauth/configured",
+      method: "get",
+      headers: { isToken: false }
+    })
+    const configured = probe?.data?.configured === true
+    if (!configured) {
+      ElMessage.warning(probe?.data?.message || "当前环境未配置 Gitee OAuth")
+      return
+    }
+    window.location.href = `${import.meta.env.VITE_APP_BASE_API || ""}/gitlogin`
+  } catch (e) {
+    ElMessage.error("检查 Gitee 配置失败，请稍后重试")
+  }
 }
 
 getCode()

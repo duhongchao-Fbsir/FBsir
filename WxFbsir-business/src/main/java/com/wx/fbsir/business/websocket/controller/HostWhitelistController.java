@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import com.wx.fbsir.common.utils.poi.ExcelUtil;
 import com.wx.fbsir.common.annotation.Log;
 import com.wx.fbsir.common.core.controller.BaseController;
 import com.wx.fbsir.common.core.domain.AjaxResult;
@@ -27,7 +28,6 @@ import org.springframework.web.client.RestTemplate;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -41,6 +41,11 @@ import java.util.stream.Collectors;
 @RequestMapping("/business/host/whitelist")
 public class HostWhitelistController extends BaseController
 {
+    /** HTTP 定时健康检查涵盖的类型：openclaw、hermes（与定时任务一致） */
+    private static boolean isHttpManagedHostType(String hostType) {
+        return "openclaw".equals(hostType) || "hermes".equals(hostType);
+    }
+
     @Autowired
     private WsHostWhitelistMapper wsHostWhitelistMapper;
     
@@ -87,6 +92,16 @@ public class HostWhitelistController extends BaseController
         return toAjax(wsHostWhitelistMapper.update(wsHostWhitelist));
     }
 
+    @PreAuthorize("@ss.hasPermi('business:host:whitelist:export')")
+    @Log(title = "主机ID白名单", businessType = BusinessType.EXPORT)
+    @PostMapping("/export")
+    public void export(HttpServletResponse response, WsHostWhitelist wsHostWhitelist)
+    {
+        List<WsHostWhitelist> list = wsHostWhitelistMapper.selectList(wsHostWhitelist);
+        ExcelUtil<WsHostWhitelist> util = new ExcelUtil<>(WsHostWhitelist.class);
+        util.exportExcel(response, list, "主机白名单数据");
+    }
+
     @PreAuthorize("@ss.hasPermi('business:host:whitelist:remove')")
     @Log(title = "主机ID白名单", businessType = BusinessType.DELETE)
     @DeleteMapping("/{ids}")
@@ -117,8 +132,8 @@ public class HostWhitelistController extends BaseController
                 return error("未找到指定主机");
             }
 
-            if (!"openclaw".equals(host.getHostType())) {
-                return error("只有OpenClaw类型的主机支持健康检查");
+            if (!isHttpManagedHostType(host.getHostType())) {
+                return error("仅 OpenClaw、Hermes 类型且配置了健康检查 URL 的主机支持该操作");
             }
 
             String healthCheckUrl = host.getHealthCheckUrl();

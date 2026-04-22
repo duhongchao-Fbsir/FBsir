@@ -88,13 +88,32 @@ public class GiteeLoginController {
     @GetMapping("/gitlogin")
     public void gitlogin(HttpServletRequest request, HttpServletResponse response) throws IOException {
         if (StringUtils.isBlank(clientId)) {
-            response.sendError(HttpServletResponse.SC_BAD_REQUEST, "gitee clientId未配置");
+            redirectWithError(response, "Gitee OAuth 未配置 clientId，请联系管理员配置");
+            return;
+        }
+        if (StringUtils.isBlank(clientSecret)) {
+            redirectWithError(response, "Gitee OAuth 未配置 clientSecret，请联系管理员配置");
             return;
         }
 
         String resolvedCallbackUrl = resolveCallbackUrl(request);
         String authorizeUrl = GiteeOauthUtil.buildAuthorizeUrl(clientId, resolvedCallbackUrl);
         response.sendRedirect(authorizeUrl);
+    }
+
+    /**
+     * 登录页/注册页用于探测 Gitee OAuth 是否可用，避免点击后进入 Whitelabel 错误页。
+     */
+    @Anonymous
+    @GetMapping("/gitee/oauth/configured")
+    public AjaxResult oauthConfigured() {
+        boolean configured = StringUtils.isNotBlank(clientId) && StringUtils.isNotBlank(clientSecret);
+        AjaxResult ajax = AjaxResult.success();
+        ajax.put("configured", configured);
+        if (!configured) {
+            ajax.put("message", "当前环境未配置 Gitee OAuth（缺少 clientId 或 clientSecret）");
+        }
+        return ajax;
     }
 
     /**

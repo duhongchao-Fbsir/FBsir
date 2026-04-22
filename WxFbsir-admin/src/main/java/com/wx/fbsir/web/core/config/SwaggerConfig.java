@@ -52,13 +52,12 @@ public class SwaggerConfig
     public Info getApiInfo()
     {
         return new Info()
-            // 设置标题
-            .title("标题：微信福帮手管理系统_接口文档")
-            // 描述
-            .description("描述：用于管理集团旗下公司的人员信息,具体包括XXX,XXX模块...")
-            // 作者信息
+            .title(wxwxwxfbsirConfig.getName() + " · 开放 API 文档")
+            .description(
+                "REST 接口（OpenAPI 3.x）。覆盖系统管理、业务模块（含 AIGC 对话历史、草稿、输出物生成/导出/Webhook 等）。"
+                    + " 实时多 AI 对话与登录检测走 WebSocket（/ws/client ↔ Engine），不在本文档逐条列出，详见项目 docs 中《WebSocket通信完整指南》。"
+            )
             .contact(new Contact().name(wxwxwxfbsirConfig.getName()))
-            // 版本
-            .version("版本号:" + wxwxwxfbsirConfig.getVersion());
+            .version(wxwxwxfbsirConfig.getVersion());
     }
 }

@@ -18,7 +18,7 @@ import java.net.HttpURLConnection;
 import java.util.List;
 
 /**
- * OpenClaw主机健康检查定时任务
+ * HTTP 纳管主机健康检查定时任务（OpenClaw、Hermes 等，依赖 health_check_url）
  *
  * @author wxfbsir
  * @date 2026-03-14
@@ -39,27 +39,23 @@ public class OpenClawHealthChecker {
      */
     @Scheduled(fixedRate = 30000)
     public void checkOpenClawHosts() {
-        logger.info("开始执行OpenClaw主机健康检查...");
+        logger.info("开始执行 HTTP 纳管主机健康检查（OpenClaw/Hermes）...");
 
         try {
-            // 查询所有启用的OpenClaw主机
-            List<WsHostWhitelist> openclawHosts = wsHostWhitelistMapper.selectOpenclawHosts();
+            List<WsHostWhitelist> hosts = wsHostWhitelistMapper.selectHostsForHttpHealthCheck();
 
-            if (openclawHosts.isEmpty()) {
-                logger.info("没有需要检查的OpenClaw主机");
+            if (hosts.isEmpty()) {
+                logger.info("没有需要 HTTP 健康检查的纳管主机");
                 return;
             }
 
-            logger.info("共检查 {} 台OpenClaw主机", openclawHosts.size());
+            logger.info("共检查 {} 台 HTTP 纳管主机", hosts.size());
 
-            // 并行处理每台主机的健康检查
-            openclawHosts.parallelStream().forEach(host -> {
-                checkSingleHost(host);
-            });
+            hosts.parallelStream().forEach(this::checkSingleHost);
 
-            logger.info("OpenClaw主机健康检查完成");
+            logger.info("HTTP 纳管主机健康检查完成");
         } catch (Exception e) {
-            logger.error("执行OpenClaw主机健康检查时发生错误", e);
+            logger.error("执行 HTTP 纳管主机健康检查时发生错误", e);
         }
     }
 

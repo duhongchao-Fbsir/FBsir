@@ -6,7 +6,7 @@ import com.wx.fbsir.business.aigc.domain.AiRequest;
 import com.wx.fbsir.business.aigc.service.IAigcService;
 import com.wx.fbsir.business.point.domain.PointsResult;
 import com.wx.fbsir.business.point.service.PointsPrecheckService;
-// import com.wx.fbsir.business.websocket.server.EngineSessionManager;
+import com.wx.fbsir.business.websocket.server.EngineSessionManager;
 import com.wx.fbsir.common.annotation.Log;
 import com.wx.fbsir.common.core.controller.BaseController;
 import com.wx.fbsir.common.core.domain.AjaxResult;
@@ -56,18 +56,16 @@ public class AigcController extends BaseController {
     @Autowired
     private PointsPrecheckService pointsPrecheckService;
 
-    // TODO: 实现WebSocket通信到Engine端
-    // @Autowired
-    // private EngineSessionManager engineSessionManager;
+    @Autowired
+    private EngineSessionManager engineSessionManager;
 
     /**
      * 通用AI请求处理接口
      * 
-     * 支持的请求类型：
-     * - AI_DEEPSEEK_CHECK_LOGIN: DeepSeek登录检查
-     * - AI_DEEPSEEK_SCAN_LOGIN: DeepSeek扫码登录
-     * - AI_DEEPSEEK_QUERY: DeepSeek AI咨询
-     * - 后续扩展: AI_XXX_XXX 类型的请求
+     * 支持的请求类型（与 Engine 能力名一致；登录类为 DEEPSEEK_* / GITEE_*，咨询为 AI_*_QUERY）：
+     * - DEEPSEEK_CHECK_LOGIN / GITEE_CHECK_LOGIN: 登录检查
+     * - DEEPSEEK_SCAN_LOGIN / GITEE_SCAN_LOGIN: 扫码登录
+     * - AI_DEEPSEEK_QUERY / AI_GITEE_QUERY: AI 咨询
      * 
      * @param aiRequest AI请求对象
      * @return 处理结果
@@ -189,9 +187,10 @@ public class AigcController extends BaseController {
     @Log(title = "保存草稿", businessType = BusinessType.INSERT)
     public AjaxResult saveDraft(@RequestBody Map<String, Object> draftData) {
         try {
-            // 设置用户信息
-            draftData.put("userName", getUserId());
-            
+            Long uid = getUserId();
+            draftData.put("userName", uid);
+            draftData.put("userId", uid);
+
             boolean success = aigcService.saveDraft(draftData);
             return success ? AjaxResult.success("草稿保存成功") : AjaxResult.error("草稿保存失败");
             
@@ -207,6 +206,18 @@ public class AigcController extends BaseController {
      * @param draftId 草稿ID
      * @return 删除结果
      */
+    /**
+     * 按主键查询单条草稿（与前端 {@code drafts.js#getDraft} 对齐）
+     */
+    @GetMapping("/draft/{draftId}")
+    public AjaxResult getDraft(@PathVariable String draftId) {
+        Map<String, Object> row = aigcService.getDraftById(draftId, getUserId());
+        if (row == null || row.isEmpty()) {
+            return AjaxResult.error("草稿不存在或无权访问");
+        }
+        return AjaxResult.success(row);
+    }
+
     @DeleteMapping("/draft/{draftId}")
     @Log(title = "删除草稿", businessType = BusinessType.DELETE)
     public AjaxResult deleteDraft(@PathVariable String draftId) {
@@ -270,12 +281,12 @@ public class AigcController extends BaseController {
         String hostId = aigcService.getUserHostId(userId);
         
         boolean hasHost = hostId != null && !hostId.isEmpty();
-        // boolean engineOnline = hasHost && engineSessionManager.isEngineOnline(hostId);
+        boolean engineOnline = hasHost && engineSessionManager.isEngineOnline(hostId);
         
         Map<String, Object> result = new HashMap<>();
         result.put("hasHostId", hasHost);
         result.put("hostId", hasHost ? hostId : null);
-        result.put("engineOnline", false); // TODO: 实现Engine在线状态检查
+        result.put("engineOnline", engineOnline);
         
         return AjaxResult.success("查询成功", result);
     }
@@ -333,6 +344,7 @@ public class AigcController extends BaseController {
     public AjaxResult generateOutputArtifact(@RequestBody Map<String, Object> params) {
         try {
             String sessionId = (String) params.get("sessionId");
+            List<String> aiTypes = parseAiTypes(params.get("aiTypes"));
 
             // sessionId 是定位会话的唯一标识，缺失时无法执行后续业务
             if (sessionId == null || sessionId.isEmpty()) {
@@ -340,7 +352,7 @@ public class AigcController extends BaseController {
             }
 
             // 调用Service生成输出物
-            Map<String, Object> result = aigcService.generateOutputArtifact(sessionId);
+            Map<String, Object> result = aigcService.generateOutputArtifact(sessionId, aiTypes);
 
             // Service层返回失败时，直接透传业务错误信息
             if (Boolean.FALSE.equals(result.get("success"))) {
@@ -370,9 +382,10 @@ public class AigcController extends BaseController {
     @GetMapping("/output/exportMarkdown/{sessionId}")
     @Log(title = "导出输出物Markdown", businessType = BusinessType.EXPORT)
     public void exportMarkdown(@PathVariable String sessionId,
+                               @RequestParam(value = "aiTypes", required = false) List<String> aiTypes,
                                jakarta.servlet.http.HttpServletResponse response) {
         try {
-            Map<String, Object> result = aigcService.exportOutputArtifactMarkdown(sessionId);
+            Map<String, Object> result = aigcService.exportOutputArtifactMarkdown(sessionId, aiTypes);
 
             // 业务失败时返回 JSON，前端可根据 content-type 判断并提示错误
             if (Boolean.FALSE.equals(result.get("success"))) {
@@ -409,6 +422,17 @@ public class AigcController extends BaseController {
                 logger.error("[输出物导出-Markdown] 响应写出失败 - sessionId: {}", sessionId);
             }
         }
+    }
+
+    private List<String> parseAiTypes(Object aiTypesObj) {
+        if (!(aiTypesObj instanceof List<?> rawList)) {
+            return null;
+        }
+        List<String> aiTypes = rawList.stream()
+            .filter(v -> v != null && !String.valueOf(v).trim().isEmpty())
+            .map(String::valueOf)
+            .toList();
+        return aiTypes.isEmpty() ? null : aiTypes;
     }
 
     /**

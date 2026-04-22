@@ -115,6 +115,7 @@ import { ElMessage } from 'element-plus'
 import { Search, Refresh, User, ChatDotRound } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import { getPlayWrighDrafts, getDraftContent } from "@/api/aigc/drafts"
+import { ENGINE_CONFIGS, getEngineConfig } from "@/config/engineConfig"
 
 // 配置 marked
 marked.setOptions({
@@ -246,7 +247,17 @@ const copyContent = async () => {
     }
     
     // 🔥 从数据库获取真实的draft_content文本
-    const aiName = selectedModel.value.name || 'deepseek'
+    const resolveAiIdentifier = (rawNameOrId) => {
+      const raw = String(rawNameOrId || '').trim()
+      if (!raw) return 'unknown'
+      const lowered = raw.toLowerCase()
+      if (getEngineConfig(lowered)) return lowered
+      if (lowered === 'tongyi' || lowered === 'ty') return 'qianwen'
+      if (lowered === 'metaso') return 'mita'
+      const byDisplay = ENGINE_CONFIGS.find(cfg => cfg.displayName === raw)
+      return byDisplay?.id || 'unknown'
+    }
+    const aiName = resolveAiIdentifier(selectedModel.value.aiType || selectedModel.value.name)
     const response = await getDraftContent(taskId, aiName)
     
     if (response && response.data && response.data.content) {

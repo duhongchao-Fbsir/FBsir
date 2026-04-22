@@ -2,7 +2,7 @@
 
 > **目标读者**: 所有需要提交代码和发起Pull Request的开发者  
 > **文档用途**: 规范Fork仓库、分支管理、Commit格式、PR提交流程  
-> **更新日期**: 2025-12-28
+> **更新日期**: 2026-04-18
 
 ---
 
@@ -81,46 +81,41 @@ WxFbsir-ui/src/api/business/content/dailyassistant.js
 
 ### 分支管理流程
 
-### 1. Fork主仓库
+### 1. Fork 主仓库
 
-1. 访问主仓库：`https://gitee.com/U3W-AI/U3W-AI`
-2. 点击右上角"Fork"按钮，将项目Fork到自己的账号下
-3. Clone自己Fork的仓库到本地：
+1. 访问主仓库：**[https://github.com/duhongchao-Fbsir/FBsir](https://github.com/duhongchao-Fbsir/FBsir)**（默认分支 **`fbsir`**）
+2. 点击右上角 **Fork**，将项目 Fork 到自己的账号下
+3. Clone 自己 Fork 的仓库到本地（目录名一般为 `FBsir`）：
 ```bash
-git clone https://gitee.com/U3W-AI/U3W-AI.git
-cd U3W-AI
+git clone https://github.com/<your-username>/FBsir.git
+cd FBsir
 ```
 
 ### 2. 添加上游仓库
 
-```bash
-# 添加主仓库为上游仓库
-git remote add upstream https://gitee.com/U3W-AI/U3W-AI.git
+若需与主仓库保持同步，将官方仓库添加为 `upstream`（名称可自定，下文以 `upstream` 为例）：
 
-# 查看远程仓库
+```bash
+git remote add upstream https://github.com/duhongchao-Fbsir/FBsir.git
+
 git remote -v
-# origin    https://gitee.com/your-username/U3W-AI.git (fetch)
-# origin    https://gitee.com/your-username/U3W-AI.git (push)
-# upstream  https://gitee.com/U3W-AI/U3W-AI.git (fetch)
-# upstream  https://gitee.com/U3W-AI/U3W-AI.git (push)
+# origin    https://github.com/<your-username>/FBsir.git (fetch)
+# origin    https://github.com/<your-username>/FBsir.git (push)
+# upstream  https://github.com/duhongchao-Fbsir/FBsir.git (fetch)
+# upstream  https://github.com/duhongchao-Fbsir/FBsir.git (push)
 ```
 
 ### 3. 同步主仓库更新
 
-在开始新功能开发前，先同步主仓库的最新代码
-(也可以直接在gitee打开自己的fork仓库中点击刷新）：
+在开始新功能开发前，先同步主仓库最新代码（也可在 GitHub 网页上对 Fork 执行 **Sync fork**）：
 
 ```bash
-# 切换到福帮手分支
 git checkout fbsir
 
-# 拉取上游仓库更新
 git fetch upstream
 
-# 合并上游更新
 git merge upstream/fbsir
 
-# 推送到自己的远程仓库
 git push origin fbsir
 ```
 
@@ -340,7 +335,7 @@ docs: 更新部署文档添加元器配置说明 (2025-12-05)
 - ✅ 确保没有提交不必要的文件
 - ❌ 不要在PR中包含多个不相关的功能
 - ❌ 不要提交未完成的代码
-- ❌ 不要在PR描述中署名（Gitee会自动记录提交者）
+- ❌ 不要在 PR 描述中署名（GitHub / Gitee 等平台会自动记录提交者）
 
 ---
 
@@ -434,6 +429,8 @@ CREATE TABLE IF NOT EXISTS `daily_article` (
 - [ ] 目录层级与数据库菜单表层级一致
 - [ ] API文件名与页面目录名保持一致
 - [ ] 没有在未经允许的位置存放代码
+- [ ] **未**将 `WxFbsir-engine` 加入仓库**根** `pom.xml` 的 `<modules>`（主副节点分轨，见 [全局一致性对齐说明.md §1.4](../全局一致性对齐说明.md)）
+- [ ] 若 PR 修改 CI/文档：未宣称「根 `mvn test` 已覆盖 Engine」；Engine 验证仍表述为在 `WxFbsir-engine` 目录单独执行
 
 #### 文件提交
 - [ ] 没有提交本地运行文件（`target/`、`node_modules/`、`.idea/`）

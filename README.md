@@ -1,9 +1,9 @@
 <h1 align="center" style="margin: 30px 0 30px; font-weight: bold;">福帮手数据智能化系统</h1>
 <h4 align="center">福帮手FBSir，幸福有AI，幸运有你。Fbsir, AI 4 Happiness, U 4 Fortune。</h4>
 <p align="center">
-	<a href="https://gitee.com/U3W-AI/RuoYi-Vue"><img src="https://img.shields.io/badge/WxFbsir-v1.3.2-brightgreen.svg"></a>
+	<a href="https://github.com/duhongchao-Fbsir/FBsir"><img src="https://img.shields.io/badge/WxFbsir-v1.0.0--core-brightgreen.svg"></a>
 	<a href="https://www.fbsir.com"><img src="https://img.shields.io/badge/website-www.fbsir.com-blue.svg"></a>
-    <a href="https://gitee.com/U3W-AI/WxFbsir/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg"></a>
+    <a href="https://github.com/duhongchao-Fbsir/FBsir/blob/fbsir/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg"></a>
     <a href="https://spring.io/projects/spring-boot"><img src="https://img.shields.io/badge/Spring%20Boot-3.x-green.svg"></a>
     <a href="https://vuejs.org/"><img src="https://img.shields.io/badge/Vue-3.x-4FC08D.svg"></a>
 </p>
@@ -72,6 +72,11 @@
 - **自动化**：Playwright
 - **通信**：WebSocket
 
+### 🔖 版本口径说明（按代码对齐）
+- **主干工程版本**：`1.0.0`（以根目录 `pom.xml` 与 `WxFbsir-ui/package.json` 为准）
+- **Engine 节点版本**：`1.3.1`（以 `WxFbsir-engine/pom.xml` 的 `engine.version` 为准）
+- **文档中的 JAR 名称**：统一使用 `wxfbsir-engine-[engine.version].jar` 占位，不再硬编码历史版本号
+
 ---
 
 ## 📂 项目结构
@@ -89,6 +94,8 @@ WxFbsir
 └── WxFbsir-system      // [系统] 用户、权限、日志管理
 ```
 
+**Maven 主副节点**：`WxFbsir-engine` 为独立工程，**不**列入根目录 `pom.xml` 的 `<modules>`；构建与测试在 `WxFbsir-engine/` 下单独执行。全局审计清单见 `docs/全局一致性对齐说明.md` **§1.4**（避免误改）。
+
 ---
 
 ## 🚀 快速开始
@@ -100,9 +107,10 @@ WxFbsir
 - **Redis**：>= 5.0
 
 ### 2. 后端启动
-1.  **克隆项目**：
+1.  **克隆项目**（主仓库在 GitHub；进入目录名一般为 `FBsir`）：
     ```bash
-    git clone https://gitee.com/U3W-AI/U3W-AI.git
+    git clone https://github.com/duhongchao-Fbsir/FBsir.git
+    cd FBsir
     ```
 2.  **导入数据库**：
     创建数据库 `wxfbsir`，并导入 `sql` 目录下的初始化脚本。
@@ -162,12 +170,12 @@ npm run dev      # 启动开发服务器
 
 ### ✨ **特色功能之文档分析MCP服务**
 
-文档分析MCP及可用于验证的元器智能体工作流上线，支付丰富格式和快速接入。
+文档分析 MCP 及可用于验证的元器智能体工作流上线，支持丰富格式和快速接入。
 
 
-### ✨ **OpenClaw主机管理功能上线**
+### ✨ **OpenClaw / Hermes 主机纳管**
 
-集中管理多个OpenClaw主机的配置和状态，实时掌握所有主机的运行状态，精细控制主机的访问权限。
+集中管理 OpenClaw、Hermes 等 HTTP 纳管主机的配置与在线状态（健康检查 URL），实时掌握运行状态与访问策略。
 
 
 ### ✨ **特色模块之认证易**
@@ -180,6 +188,7 @@ npm run dev      # 启动开发服务器
 
 ## 文档中心
 
+- **[项目白皮书](./docs/项目白皮书.md)** - 全维度介绍（决策/产品/实施/研发/合规等多类读者）、架构与能力地图、部署与风险索引
 - **[部署文档](./部署文档.md)** - 完整的部署指南（包含元器工作流配置）
 - **[项目结构说明](./项目结构说明.md)** - 项目目录结构和模块说明
 - **[常见问题 (FAQ)](./docs/运行维护/FAQ.md)** - 常见问题解答
@@ -188,10 +197,11 @@ npm run dev      # 启动开发服务器
 - **[文档规范总结](./docs/开发规范/文档规范总结.md)** - 文档编写规范汇总
 - **[权限控制规范](./docs/开发规范/权限控制规范.md)** - 权限与鉴权规范
 - **[功能说明](./docs/功能说明)** - 功能说明目录
+- **[全局一致性对齐说明](./docs/全局一致性对齐说明.md)** - 代码实现与文档口径统一基线
 
 本项目后台管理系统基于 **若依(RuoYi)** 框架进行二次开发，感谢若依团队提供的优秀开源框架。
 
 
-文档更新日期：2026年3月21日 19：00  文档版本：1.3.2
+文档更新日期：2026年4月18日  文档版本：1.0.0-core（主干） / 1.3.1（Engine）；白皮书见 `docs/项目白皮书.md`
 
 <p align="center">Copyright © 2024-2026 WxFbsir. All Rights Reserved.</p>

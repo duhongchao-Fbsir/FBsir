@@ -1,6 +1,6 @@
-# OpenClaw主机纳管功能说明
+# OpenClaw / Hermes 主机纳管功能说明
 
-OpenClaw主机纳管功能是福帮手Admin侧实现的主机管理原型，支持OpenClaw主机的登记、状态监控、管控和健康检查。
+福帮手 Admin 侧主机白名单能力：支持 **Engine**（WebSocket 接入）、**OpenClaw** 与 **Hermes**（HTTP `health_check_url` 定时探测）等类型的登记、在线状态与管控。**Hermes** 与 OpenClaw 共用同一套 HTTP 健康检查逻辑（`host_type` 为 `openclaw` 或 `hermes`）。
 
 ---
 
@@ -20,19 +20,19 @@ OpenClaw主机纳管功能是福帮手Admin侧实现的主机管理原型，支�
 
 ## 功能概述
 
-OpenClaw主机纳管功能提供了一套完整的主机管理解决方案，主要包括：
+主机纳管（白名单）功能提供了一套完整的主机管理解决方案，主要包括：
 
-1. **主机登记**：支持OpenClaw主机的信息登记和管理
+1. **主机登记**：支持 OpenClaw、Hermes 等 HTTP 纳管主机的信息登记和管理
 2. **状态监控**：实时显示主机在线/离线状态
 3. **主机管控**：支持主机的启用/禁用、修改和删除操作
 4. **健康检查**：定期对主机进行健康检查，自动更新在线状态
-5. **类型区分**：支持区分engine和openclaw两种主机类型
+5. **类型区分**：支持 **engine**、**openclaw**、**hermes** 等主机类型
 
 ---
 
 ## 使用场景
 
-- **OpenClaw主机管理**：集中管理多个OpenClaw主机的配置和状态
+- **OpenClaw / Hermes 主机管理**：集中管理旁路执行器（HTTP 可达）的配置与在线状态
 - **主机健康监控**：实时掌握所有主机的运行状态
 - **主机权限控制**：精细控制主机的访问权限
 
@@ -57,8 +57,8 @@ wxfbsir:
 
 - **主机ID**：唯一标识符
 - **主机名称**：便于识别的名称
-- **主机类型**：选择"openclaw"
-- **健康检查URL**：OpenClaw服务的健康检查地址
+- **主机类型**：选择 **openclaw** 或 **hermes**
+- **健康检查URL**：OpenClaw Gateway 或 Hermes 暴露的 **Admin 可访问** HTTP 地址（GET 返回 2xx 即判在线）
 
 ---
 
@@ -73,6 +73,7 @@ wxfbsir:
 | `/business/host/whitelist` | POST | `business:host:whitelist:add` | 新增主机 |
 | `/business/host/whitelist` | PUT | `business:host:whitelist:edit` | 修改主机信息 |
 | `/business/host/whitelist/{ids}` | DELETE | `business:host:whitelist:remove` | 删除主机 |
+| `/business/host/whitelist/export` | POST | `business:host:whitelist:export` | 导出主机白名单（Excel） |
 
 ### 前端接口
 
@@ -114,9 +115,10 @@ export function delWhitelist(ids)
 
 ### 1. 主机类型支持
 
-支持两种主机类型：
-- `engine`：引擎主机
-- `openclaw`：OpenClaw主机
+支持三种主机类型（`ws_host_whitelist.host_type`）：
+- `engine`：Engine 节点（WebSocket 注册，白名单鉴权）
+- `openclaw`：OpenClaw Gateway（HTTP 健康检查）
+- `hermes`：Hermes Agent（HTTP 健康检查，与 OpenClaw 共用定时任务与手动检查接口）
 
 ### 2. 健康检查机制
 
@@ -142,7 +144,7 @@ export function delWhitelist(ids)
 | id | BIGINT | 主键ID |
 | host_id | VARCHAR(50) | 主机ID |
 | host_name | VARCHAR(100) | 主机名称 |
-| host_type | VARCHAR(20) | 主机类型：engine/openclaw |
+| host_type | VARCHAR(20) | 主机类型：engine/openclaw/hermes |
 | health_check_url | VARCHAR(200) | 健康检查URL |
 | online_status | VARCHAR(10) | 在线状态：online/offline |
 | status | TINYINT | 状态：0禁用 1启用 |
@@ -163,7 +165,7 @@ export function delWhitelist(ids)
 | Mapper | `WxFbsir-business/src/main/java/com/wx/fbsir/business/websocket/mapper/WsHostWhitelistMapper.java` |
 | Mapper XML | `WxFbsir-business/src/main/resources/mapper/websocket/WsHostWhitelistMapper.xml` |
 | 控制器 | `WxFbsir-business/src/main/java/com/wx/fbsir/business/websocket/controller/HostWhitelistController.java` |
-| 健康检查 | `WxFbsir-business/src/main/java/com/wx/fbsir/business/websocket/task/OpenClawHealthChecker.java` |
+| HTTP 健康检查（OpenClaw/Hermes） | `WxFbsir-business/.../websocket/task/OpenClawHealthChecker.java`（`selectHostsForHttpHealthCheck`） |
 | WebSocket配置 | `WxFbsir-business/src/main/java/com/wx/fbsir/business/websocket/config/WebSocketConfig.java` |
 | WebSocket拦截器 | `WxFbsir-business/src/main/java/com/wx/fbsir/business/websocket/server/ClientWebSocketInterceptor.java` |
 
@@ -187,8 +189,8 @@ export function delWhitelist(ids)
 4. 填写主机信息
    - 主机ID：唯一标识符
    - 主机名称：便于识别的名称
-   - 主机类型：选择"openclaw"
-   - 健康检查URL：OpenClaw服务地址
+   - 主机类型：选择 **openclaw** 或 **hermes**
+   - 健康检查URL：OpenClaw 或 Hermes 的 HTTP 健康地址（须从 Admin 网络可达）
 5. 点击"保存"按钮
 
 ### 状态查看

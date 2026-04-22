@@ -24,6 +24,7 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 浏览器池管理器
@@ -282,16 +283,35 @@ public class BrowserPoolManager {
         // 旧问题：线程1 get()检查通过，线程2 put()覆盖，线程1返回旧Session → Session泄漏
         // 新方案：使用computeIfAbsent原子性操作
         if (persistent) {
+            AtomicReference<BrowserSession> staleRef = new AtomicReference<>();
             // 先尝试原子获取现有Session
             BrowserSession existing = persistentSessions.computeIfPresent(key, (k, session) -> {
                 // 在computeIfPresent的lambda中，持有锁，线程安全
-                if (session.isValid() && session.acquire(name)) {
+                if (!session.isValid()) {
+                    staleRef.set(session);
+                    return null;
+                }
+                if (!session.acquire(name)) {
+                    return null;
+                }
+                if (isSessionContextAlive(session)) {
                     log.debug("[浏览器池] 复用持久化会话: {}", key);
                     return session; // 保留现有Session
                 }
-                // Session无效或无法获取，返回null让外层重新创建
+                try {
+                    session.release();
+                } catch (Exception ignore) {
+                    // ignore
+                }
+                staleRef.set(session);
                 return null;
             });
+
+            BrowserSession stale = staleRef.get();
+            if (stale != null) {
+                log.warn("[浏览器池] 发现失效持久化会话，已剔除并重建: {}", key);
+                destroy(stale);
+            }
             
             if (existing != null) {
                 // 成功复用
@@ -411,12 +431,10 @@ public class BrowserPoolManager {
      */
     public void destroy(BrowserSession session) {
         if (session == null) return;
-        
-        String key = buildKey(session.getUserId(), session.getName());
-        
-        // 从池中移除
+
+        // 从池中移除（按对象移除，兼容带 instanceId 的 key）
         if (session.isPersistent()) {
-            persistentSessions.remove(key);
+            persistentSessions.entrySet().removeIf(entry -> entry.getValue() == session);
         } else {
             temporarySessions.remove(session.getSessionId());
         }
@@ -430,6 +448,20 @@ public class BrowserPoolManager {
         
         log.debug("[浏览器池] 销毁会话 - 用户: {}, 名称: {}, 持久化: {}, 活跃: {}/{}", 
             session.getUserId(), session.getName(), session.isPersistent(), active, semaphore.availablePermits());
+    }
+
+    private boolean isSessionContextAlive(BrowserSession session) {
+        try {
+            BrowserContext ctx = session.getContext();
+            ctx.pages();
+            return true;
+        } catch (Exception e) {
+            String msg = e.getMessage() == null ? "" : e.getMessage().toLowerCase();
+            if (msg.contains("targetclosederror") || msg.contains("target page, context or browser has been closed")) {
+                return false;
+            }
+            return false;
+        }
     }
 
     /**
@@ -483,10 +515,10 @@ public class BrowserPoolManager {
         int maxRetries = browserConfig.getMaxRetries();
         long retryInterval = browserConfig.getRetryInterval();
         
-        // 🔧 在创建前主动清理锁文件（预防性清理）
+        // 🔧 在创建前主动清理锁文件（预防性清理，路径需与 launchPersistentContext 一致）
         if (persistent) {
             try {
-                cleanupBrowserLockFiles(userId, name);
+                cleanupBrowserLockFiles(userId, name, instanceId);
             } catch (Exception e) {
                 log.debug("[浏览器池] 预清理锁文件异常: {}", e.getMessage());
             }
@@ -531,7 +563,7 @@ public class BrowserPoolManager {
                 // 清理失败时创建的资源
                 cleanupFailedResources(browser, context);
                 // 清理可能的锁文件
-                cleanupBrowserLockFiles(userId, name);
+                cleanupBrowserLockFiles(userId, name, instanceId);
             } catch (Exception e) {
                 lastException = e;
                 // 最后一次失败时输出完整堆栈，其他次只记录错误信息
@@ -544,6 +576,13 @@ public class BrowserPoolManager {
                 }
                 // 清理失败时创建的资源
                 cleanupFailedResources(browser, context);
+                if (persistent && attempt < maxRetries) {
+                    try {
+                        cleanupBrowserLockFiles(userId, name, instanceId);
+                    } catch (Exception ignore) {
+                        // ignore
+                    }
+                }
             }
             
             // 如果不是最后一次尝试，等待后重试
@@ -557,12 +596,17 @@ public class BrowserPoolManager {
             }
         }
         
-        // 所有重试均失败，这是严重错误，必须告知用户
+        // 所有重试均失败，这是严重错误，必须告知用户（附带根因便于排障）
+        String root = lastException != null ? lastException.getMessage() : "unknown";
+        if (root == null || root.isBlank()) {
+            root = lastException != null ? lastException.getClass().getSimpleName() : "unknown";
+        }
         String errorMsg = String.format(
-            "无法创建浏览器会话 - 用户: %s, 已重试 %d 次\n" +
-            "可能原因: 1) Playwright 未正确安装 2) 系统资源不足 3) 浏览器进程崩溃\n" +
-            "建议: 1) 检查 Playwright 安装 2) 重启 Engine 服务 3) 检查系统资源",
-            userId, maxRetries);
+            "无法创建浏览器会话 - 用户: %s, 已重试 %d 次\n根因: %s\n" +
+            "可能原因: 1) Playwright Chromium 未安装或路径异常 2) 用户数据目录 SingletonLock/锁残留 3) 资源不足\n" +
+            "建议: 1) 在 WxFbsir-engine 模块执行官方 install（如 mvn 调用 com.microsoft.playwright.CLI install chromium）"
+            + " 2) 关闭残留 chrome 后删除目录 ./data/playwright/%s/%s 再试 3) 重启 Engine",
+            userId, maxRetries, root, name, userId);
         log.error("{}", errorMsg, lastException);
         throw new RuntimeException(errorMsg, lastException);
     }
@@ -612,6 +656,8 @@ public class BrowserPoolManager {
             } catch (Exception e) {
                 log.warn("[浏览器池] 创建用户数据目录失败 - 路径: {}, 错误: {}", userDataPath, e.getMessage());
             }
+            // 元宝固定实例在异常退出后容易留下会话恢复状态，导致启动落到 about:blank
+            cleanupCrashRestoreState(userDataPath, name, userId, instanceId);
             
             // 🔒 实例级锁：每个 Playwright 实例独立加锁
             // 优势：不同实例可以并发创建，只有同一实例的调用才串行
@@ -624,6 +670,7 @@ public class BrowserPoolManager {
                 BrowserContext context = browserType.launchPersistentContext(userDataPath, 
                     new BrowserType.LaunchPersistentContextOptions()
                         .setHeadless(headless)
+                        .setArgs(args)
                         .setTimeout(browserConfig.getLaunchTimeout())
                         .setViewportSize(browserConfig.getViewportWidth(), browserConfig.getViewportHeight()));
                 
@@ -690,9 +737,14 @@ public class BrowserPoolManager {
      * 清理浏览器锁文件（增强版：支持NFS等远程文件系统）
      * 当浏览器异常退出时，可能留下锁文件导致无法重新启动
      */
-    private void cleanupBrowserLockFiles(String userId, String name) {
+    /**
+     * @param instanceId 与 {@link #doCreateBrowserContext} 中用户目录层级一致；可为 null
+     */
+    private void cleanupBrowserLockFiles(String userId, String name, String instanceId) {
         try {
-            Path userDataPath = Paths.get(properties.getDataDir(), name, userId);
+            Path userDataPath = (instanceId != null && !instanceId.isBlank())
+                ? Paths.get(properties.getDataDir(), name, userId, instanceId)
+                : Paths.get(properties.getDataDir(), name, userId);
             if (!Files.exists(userDataPath)) {
                 return;
             }
@@ -719,6 +771,42 @@ public class BrowserPoolManager {
             }
         } catch (Exception e) {
             log.debug("[浏览器池] 清理锁文件异常: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 清理 Chromium 崩溃恢复状态文件，避免出现 about:blank + 恢复气泡。
+     * 对所有持久化用户目录执行，降低首次启动/异常退出后的卡死概率。
+     */
+    private void cleanupCrashRestoreState(Path userDataPath, String name, String userId, String instanceId) {
+        String[] directFiles = {"Last Session", "Last Tabs", "Current Session", "Current Tabs"};
+        for (String fileName : directFiles) {
+            tryDeletePath(userDataPath.resolve(fileName), fileName, userId, name, instanceId);
+        }
+        Path sessionsDir = userDataPath.resolve("Sessions");
+        if (Files.exists(sessionsDir) && Files.isDirectory(sessionsDir)) {
+            try {
+                try (var stream = Files.list(sessionsDir)) {
+                    stream.filter(Files::isRegularFile).forEach(p ->
+                        tryDeletePath(p, p.getFileName().toString(), userId, name, instanceId));
+                }
+            } catch (Exception e) {
+                log.debug("[浏览器池] 清理恢复会话目录失败 - 用户: {}, 平台: {}, 实例: {}, 错误: {}",
+                    userId, name, instanceId, e.getMessage());
+            }
+        }
+    }
+
+    private void tryDeletePath(Path path, String displayName, String userId, String name, String instanceId) {
+        try {
+            if (Files.exists(path)) {
+                Files.delete(path);
+                log.info("[浏览器池] 已清理恢复状态文件 - 用户: {}, 平台: {}, 实例: {}, 文件: {}",
+                    userId, name, instanceId, displayName);
+            }
+        } catch (Exception e) {
+            log.debug("[浏览器池] 清理恢复状态文件失败 - 用户: {}, 平台: {}, 实例: {}, 文件: {}, 错误: {}",
+                userId, name, instanceId, displayName, e.getMessage());
         }
     }
     
@@ -836,6 +924,10 @@ public class BrowserPoolManager {
         args.add("--disable-sync");
         args.add("--no-first-run");
         args.add("--disable-default-apps");
+        // 避免 Chromium 未正常退出时弹出“恢复页面”气泡，导致 about:blank 卡死
+        args.add("--hide-crash-restore-bubble");
+        args.add("--disable-session-crashed-bubble");
+        args.add("--disable-infobars");
         
         // 内存优化
         args.add("--memory-pressure-off");

@@ -1,6 +1,7 @@
 package com.wx.fbsir.engine.controller.ai;
 
 import com.microsoft.playwright.Page;
+import com.wx.fbsir.engine.capability.CapabilityNormalizer;
 import com.wx.fbsir.engine.capability.annotation.OnceCapability;
 import com.wx.fbsir.engine.capability.annotation.StreamCapability;
 import com.wx.fbsir.engine.capability.base.StreamTaskHelper;
@@ -321,7 +322,7 @@ public class DeepSeekController extends StreamTaskHelper {
         log.info("[DeepSeek扫码登录] 开始 - 用户: {}, 会话: {}, AI: {}", userId, sessionId, aiType);
         
         // 🔧 登录业务使用通用流式任务（发送 TASK_* 消息）
-        StreamTask task = startStreamTask(userId, sessionId, 2000);
+        StreamTask task = startStreamTask(userId, sessionId, extractAiType(message), 2000);
         BrowserSession session = null;
         
         try {
@@ -518,10 +519,13 @@ public class DeepSeekController extends StreamTaskHelper {
         
         // 使用JSONObject原生方法提取参数
         String query = payload.getString("query");
-        boolean enableDeepThinking = payload.getBooleanValue("enableDeepThinking", false);
-        boolean enableWebSearch = payload.getBooleanValue("enableWebSearch", false);
-        boolean enableFileUpload = payload.getBooleanValue("enableFileUpload", false);
-        String uploadedFileUrl = payload.getString("uploadedFileUrl");
+        CapabilityNormalizer.NormalizedCapabilities normalized = CapabilityNormalizer.normalize(aiType, payload);
+        boolean enableDeepThinking = normalized.isReasoning();
+        boolean enableWebSearch = normalized.isWebSearch();
+        boolean enableFileUpload = normalized.isFileUploadEnabled();
+        boolean enableFastMode = normalized.isFastMode();
+        boolean enableExpertMode = normalized.isExpertMode();
+        String uploadedFileUrl = normalized.getFileUploadUrl();
         // 🔥 区分两种ID：chatId是前端数据库分组ID，deepseekChatId是DeepSeek的AI会话ID
         String chatId = payload.getString("chatId");  // 前端分组ID（不用于DeepSeek导航）
         String deepseekChatId = payload.getString("deepseekChatId");  // DeepSeek AI会话ID（用于上下文复用）
@@ -532,18 +536,13 @@ public class DeepSeekController extends StreamTaskHelper {
         log.info("  - enableDeepThinking: {}", enableDeepThinking);
         log.info("  - enableWebSearch: {}", enableWebSearch);
         log.info("  - enableFileUpload: {}", enableFileUpload);
+        log.info("  - enableFastMode: {}", enableFastMode);
+        log.info("  - enableExpertMode: {}", enableExpertMode);
         log.info("  - uploadedFileUrl: {}", uploadedFileUrl != null && !uploadedFileUrl.isEmpty() ? uploadedFileUrl : "未上传文件");
         log.info("  - 前端chatId: {}", chatId);
         log.info("  - deepseekChatId: {}", deepseekChatId);
-        
-        String mode = "normal";
-        if (enableDeepThinking && enableWebSearch) {
-            mode = "deepThinking+webSearch";
-        } else if (enableDeepThinking) {
-            mode = "deepThinking";
-        } else if (enableWebSearch) {
-            mode = "webSearch";
-        }
+
+        String mode = normalized.getDeepseekMode();
         
         log.info("[DeepSeek咨询] 开始 - 用户: {}, sessionId: {}, 模式: {}, 前端chatId: {}, deepseekChatId: {}", 
             userId, sessionId, mode, chatId, deepseekChatId != null ? deepseekChatId : "新会话");
@@ -553,6 +552,9 @@ public class DeepSeekController extends StreamTaskHelper {
         BrowserSession session = null;
         
         try {
+            if (!normalized.getUnsupportedOptionIds().isEmpty()) {
+                task.sendLog("检测到不支持能力，已自动忽略: " + String.join(", ", normalized.getUnsupportedOptionIds()));
+            }
             if (query == null || query.trim().isEmpty()) {
                 task.sendError("问题内容不能为空");
                 return;
@@ -608,9 +610,28 @@ public class DeepSeekController extends StreamTaskHelper {
             }
             
             task.sendLog("登录验证通过，准备发送问题...");
+
+                // 模式切换必须先于文件上传执行：避免上传后切模式导致附件丢失
+                if (enableFastMode || enableExpertMode) {
+                    task.sendLog("正在切换对话模式...");
+                    deepSeekUtil.applyConversationMode(page, enableFastMode, enableExpertMode);
+
+                    // 若是续问会话，切模式后回到目标会话页，确保上下文与附件都在同一会话中
+                    if (deepseekChatId != null && !deepseekChatId.isEmpty()) {
+                        task.sendLog("正在恢复DeepSeek会话: " + deepseekChatId);
+                        boolean modeNavigated = deepSeekUtil.navigateToChat(page, deepseekChatId);
+                        if (!modeNavigated) {
+                            task.sendError("模式切换后恢复DeepSeek会话失败: " + deepseekChatId);
+                            return;
+                        }
+                    }
+                }
                 
+                boolean uploadAttempted = false;
+                boolean uploadEffective = true;
                 // 🔥 处理文件上传（如果有）— 使用通用文件处理工具
                 if (enableFileUpload && uploadedFileUrl != null && !uploadedFileUrl.isEmpty()) {
+                    uploadAttempted = true;
                     task.sendLog("检测到文件上传请求，正在处理...");
                     log.info("[DeepSeek咨询] 开始文件处理流程: {}", uploadedFileUrl);
                     
@@ -625,6 +646,7 @@ public class DeepSeekController extends StreamTaskHelper {
                             page.waitForTimeout(1500);
                         }
                     );
+                    uploadEffective = fileResult.isSuccess();
                     
                     if (fileResult.isSuccess()) {
                         task.sendLog("文件已成功上传到DeepSeek");
@@ -704,6 +726,13 @@ public class DeepSeekController extends StreamTaskHelper {
                     resultData.put("answer", answer != null ? answer : "DeepSeek回复完成，但获取内容失败");
                     resultData.put("hasScreenshot", false);
                     log.warn("[DeepSeek咨询] ⚠️ 截图失败，answer存储文本内容");
+                }
+                Map<String, Object> qualityGate = com.wx.fbsir.engine.utils.ai.ResponseQualityGate.evaluate(
+                    query, answer, uploadAttempted, uploadEffective, uploadedFileUrl
+                );
+                resultData.put("qualityGate", qualityGate);
+                if ("suspect".equals(String.valueOf(qualityGate.get("status")))) {
+                    task.sendLog("结果门禁提示：" + qualityGate.get("summary"));
                 }
                 
                 task.sendSuccess("DeepSeek回复完成", resultData);

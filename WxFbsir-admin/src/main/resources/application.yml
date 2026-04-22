@@ -1,7 +1,7 @@
 # 项目相关配置
 wxfbsir:
   # 名称
-  name: 微信福帮手
+  name: 福帮手数据智能化系统
   # 版本
   version: 1.0.0
   # 版权年份
@@ -61,6 +61,9 @@ server:
       min-spare: 100
 # 日志配置
 logging:
+  charset:
+    console: UTF-8
+    file: UTF-8
   level:
     root: info
     com.wx.fbsir: info
@@ -85,6 +88,10 @@ spring:
     active: druid
   # 文件上传
   servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
     multipart:
       # 单个文件大小
       max-file-size: 20MB

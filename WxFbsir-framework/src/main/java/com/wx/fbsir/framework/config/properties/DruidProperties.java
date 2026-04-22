@@ -1,5 +1,6 @@
 package com.wx.fbsir.framework.config.properties;
 
+import java.util.Collections;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import com.alibaba.druid.pool.DruidDataSource;
@@ -84,6 +85,8 @@ public class DruidProperties
         datasource.setTestOnBorrow(testOnBorrow);
         /** 归还连接时执行validationQuery检测连接是否有效，做了这个配置会降低性能。 */
         datasource.setTestOnReturn(testOnReturn);
+        /** 每个连接建立后使用 utf8mb4，与表 COLLATE 一致，避免中文/四字节字符乱码 */
+        datasource.setConnectionInitSqls(Collections.singletonList("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci"));
         return datasource;
     }
 }

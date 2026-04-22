@@ -68,6 +68,12 @@ public interface AigcMapper {
     int deleteDraft(Map<String, Object> params);
 
     /**
+     * 按主键查询草稿（须匹配 userId）
+     */
+    Map<String, Object> getDraftById(@org.apache.ibatis.annotations.Param("draftId") String draftId,
+                                      @org.apache.ibatis.annotations.Param("userId") Long userId);
+
+    /**
      * 根据sessionId获取聊天记录
      * 
      * @param sessionId 会话ID
@@ -108,12 +114,10 @@ public interface AigcMapper {
                                                       @org.apache.ibatis.annotations.Param("keyWord") String keyWord);
 
     /**
-     * 🔥 获取指定task_id下的所有AI响应（参考旧项目cube-admin）
-     * 
-     * @param taskId 任务ID
-     * @return AI响应列表
+     * 🔥 获取指定 task_id 下、属于当前用户的所有 AI 响应
      */
-    List<Map<String, Object>> getPlayWrightDraftAiList(String taskId);
+    List<Map<String, Object>> getPlayWrightDraftAiList(@org.apache.ibatis.annotations.Param("taskId") String taskId,
+                                                        @org.apache.ibatis.annotations.Param("userId") Long userId);
     
     /**
      * 🔥 获取草稿文本内容（用于复制功能）

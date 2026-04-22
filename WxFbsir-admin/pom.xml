@@ -64,6 +64,13 @@
             <artifactId>WxFbsir-business</artifactId>
         </dependency>
 
+        <!-- 单元 / 集成测试（MockMvc 等） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <build>

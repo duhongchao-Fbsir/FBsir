@@ -166,8 +166,8 @@ Engine端知识库功能的技术接口说明文档。
 
 ---
 
-### [OpenClaw主机纳管功能说明](business功能/OpenClaw主机纳管功能说明.md)
-OpenClaw主机纳管功能，支持主机的登记、状态监控、管控和健康检查。
+### [OpenClaw / Hermes 主机纳管功能说明](business功能/OpenClaw主机纳管功能说明.md)
+主机白名单纳管（Engine / OpenClaw / Hermes），HTTP 类型支持定时与手动健康检查。
 
 **代码位置：**
 - 后端：`WxFbsir-business/src/main/java/com/wx/fbsir/business/websocket/`

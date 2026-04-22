@@ -291,8 +291,8 @@ public class TongyiController extends StreamTaskHelper {
 cd WxFbsir-engine
 mvn spring-boot:run
 
-# 2. 启动Admin（存储服务）
-cd WxFbsir-business
+# 2. 启动Admin（主节点服务）
+cd WxFbsir-admin
 mvn spring-boot:run
 
 # 3. 启动前端
@@ -302,7 +302,7 @@ npm run dev
 
 ### 4.4 配置用户主机ID
 
-1. 登录系统：http://localhost:8080
+1. 登录系统：http://localhost:80
 2. 进入 **个人中心** → **主机配置**
 3. 设置主机ID：`engine-001`
 4. 点击"检测连接"验证Engine在线

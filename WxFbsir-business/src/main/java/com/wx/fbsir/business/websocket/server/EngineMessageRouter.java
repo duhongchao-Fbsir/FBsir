@@ -244,26 +244,34 @@ public class EngineMessageRouter {
             log.debug("[AIGC存储] 提取参数 - sessionId: {}, chatId: {}, aiType: {}", 
                 sessionId, chatId, aiType);
             
+            if ("AI_TASK_RESULT".equals(type) || "AI_TASK_ERROR".equals(type)) {
+                String platformChatId = extractPlatformChatIdFromPayload(payload);
+                Object errCode = payload != null ? payload.get("errorCode") : null;
+                Object errMsg = payload != null ? payload.get("errorMessage") : null;
+                log.info("[AIGC入站] stage=inbound requestType={} sessionId={} chatId={} aiType={} platformChatId={} errorCode={} errorMessage={}",
+                    type, sessionId, chatId, aiType, platformChatId, errCode, errMsg);
+            }
+
             // 🤖 根据消息类型处理存储
             if ("AI_TASK_LOG".equals(type)) {
                 // 进度日志消息 - 追加到数据库
                 appendProgressLog(userId, sessionId, chatId, aiType, payload);
-                log.debug("[AIGC存储] 进度日志已追加 - 会话: {}, AI: {}", sessionId, aiType);
+                log.debug("[AIGC存储] stage=appendProgress 会话: {}, AI: {}", sessionId, aiType);
                 
             } else if ("AI_TASK_SCREENSHOT".equals(type)) {
                 // 截图消息 - 追加到数据库
                 appendScreenshot(userId, sessionId, chatId, aiType, payload);
-                log.debug("[AIGC存储] 截图已追加 - 会话: {}, AI: {}", sessionId, aiType);
+                log.debug("[AIGC存储] stage=appendScreenshot 会话: {}, AI: {}", sessionId, aiType);
                 
             } else if ("AI_TASK_RESULT".equals(type)) {
                 // 🔥 AI对话结果 - 保存完整结果到聊天历史
                 saveAiResult(userId, sessionId, chatId, aiType, userPrompt, payload, type);
-                log.info("[AIGC存储] ✅ AI结果已保存 - 会话: {}, chatId: {}, AI: {}", sessionId, chatId, aiType);
+                log.info("[AIGC存储] stage=storeResult status=success 会话: {}, chatId: {}, AI: {}", sessionId, chatId, aiType);
                 
             } else if ("AI_TASK_ERROR".equals(type)) {
                 // 错误消息 - 保存错误信息
                 saveAiResult(userId, sessionId, chatId, aiType, userPrompt, payload, type);
-                log.warn("[AIGC存储] ⚠️ AI错误已记录 - 会话: {}, AI: {}", sessionId, aiType);
+                log.warn("[AIGC存储] stage=storeResult status=error 会话: {}, AI: {}", sessionId, aiType);
             }
             
         } catch (Exception e) {
@@ -282,25 +290,53 @@ public class EngineMessageRouter {
             log.info("[AI存储] 开始更新 - 用户: {}, 会话: {}, AI类型: {}", userId, sessionId, aiType);
             log.debug("[AI存储] 原始payload: {}", JSON.toJSONString(payload));
             
-            // 🔥 从payload.data中提取嵌套数据（Engine返回的结构是 payload.data.xxx）
-            @SuppressWarnings("unchecked")
-            Map<String, Object> dataMap = (Map<String, Object>) payload.get("data");
+            // 🔥 先取历史记录，便于错误场景回填 userPrompt（Engine 的 AI_TASK_ERROR 常不带 data.query）
+            Map<String, Object> existingChat = aigcService.getChatBySessionId(sessionId);
             
-            // 🔥 从dataMap中提取用户指令和DeepSeek的chatId
+            // 🔥 从 payload.data 提取（避免非 Map 类型导致 ClassCastException）
+            Map<String, Object> dataMap = safeGetDataMap(payload);
+            
+            // 🔥 用户提问文本：优先使用 Engine 在 payload 顶层回传的 userPrompt（与 data.query 同源，但避免嵌套 Map 反序列化差异导致乱码）
+            // 仅当顶层为空时再回退到 payload.data.query，再回退历史记录
             String actualUserPrompt = userPrompt;
-            String deepseekChatId = null;
+            String platformChatId = null;
             
             if (dataMap != null) {
-                // 优先从dataMap中获取query作为userPrompt
                 String queryFromData = getStringValue(dataMap, "query");
-                if (queryFromData != null && !queryFromData.isEmpty()) {
+                if ((actualUserPrompt == null || actualUserPrompt.isEmpty())
+                        && queryFromData != null && !queryFromData.isEmpty()) {
                     actualUserPrompt = queryFromData;
-                    log.debug("[AI存储] 从payload.data.query获取userPrompt: {}", actualUserPrompt);
+                    log.debug("[AI存储] 从payload.data.query回填 userPrompt: {}", actualUserPrompt);
                 }
                 
-                // 从dataMap中获取DeepSeek返回的chatId（用于下次请求）
-                deepseekChatId = getStringValue(dataMap, "chatId");
-                log.debug("[AI存储] 从payload.data.chatId获取DeepSeek会话ID: {}", deepseekChatId);
+                // 从 dataMap 中提取平台侧 chatId（用于对应AI上下文复用）
+                platformChatId = getStringValue(dataMap, "chatId");
+                log.debug("[AI存储] 从payload.data.chatId获取平台会话ID: {}", platformChatId);
+            }
+            
+            if ((actualUserPrompt == null || actualUserPrompt.isEmpty()) && existingChat != null) {
+                Object prev = existingChat.get("userPrompt");
+                if (prev != null && !prev.toString().isEmpty()) {
+                    actualUserPrompt = prev.toString();
+                    log.debug("[AI存储] 从历史记录回填 userPrompt");
+                }
+            }
+            
+            // 🔥 AI_TASK_ERROR：将 errorMessage 合入 results（含 data==null、data=={}、data 无 answer 等）
+            Map<String, Object> effectiveDataMap = dataMap != null ? new HashMap<>(dataMap) : null;
+            if ("AI_TASK_ERROR".equals(messageType)) {
+                String err = getStringValue(payload, "errorMessage");
+                if (effectiveDataMap == null) {
+                    effectiveDataMap = new HashMap<>();
+                }
+                if (err != null && !err.isEmpty()) {
+                    String prevAns = getStringValue(effectiveDataMap, "answer");
+                    if (prevAns == null || prevAns.isEmpty()) {
+                        effectiveDataMap.put("answer", err);
+                        effectiveDataMap.put("textContent", err);
+                    }
+                }
+                effectiveDataMap.put("success", false);
             }
             
             // 🔥 使用前端传递的chatId作为会话分组ID（从缓存获取）
@@ -316,7 +352,6 @@ public class EngineMessageRouter {
             log.info("[AI存储] 提取结果 - userPrompt: {}, chatId: {}", actualUserPrompt, actualChatId);
             
             // 🔥 读取现有聊天记录，合并progressLogs和screenshots（避免覆盖）
-            Map<String, Object> existingChat = aigcService.getChatBySessionId(sessionId);
             Map<String, Object> mergedData = new HashMap<>();
             List<Map<String, Object>> existingResults = new ArrayList<>();
             
@@ -337,7 +372,7 @@ public class EngineMessageRouter {
             
             // 合并payload到mergedData（payload中的字段优先级更高）
             mergedData.putAll(payload);
-            mergedData.put("results", mergeAiResults(existingResults, aiType, dataMap));
+            mergedData.put("results", mergeAiResults(existingResults, aiType, effectiveDataMap));
             
             Map<String, Object> chatData = new HashMap<>();
             chatData.put("id", sessionId);
@@ -351,7 +386,7 @@ public class EngineMessageRouter {
             chatData.put("chatId", actualChatId);
             
             // 🔥 根据AI类型设置对应的AI会话ID字段（用于上下文复用）
-            setAiChatIdField(chatData, aiType, deepseekChatId);
+            setAiChatIdField(chatData, aiType, platformChatId);
             
             // 🔥🔥🔥 改为更新记录（因为预保存已创建，避免主键冲突）
             // existingChat已在上面获取，直接使用
@@ -364,7 +399,7 @@ public class EngineMessageRouter {
             }
             
             // 🔥 同步保存到AI记录扩展表（存储分享链接和截图）
-            saveToExtensionTable(userId, sessionId, actualUserPrompt, aiType, dataMap);
+            saveToExtensionTable(userId, sessionId, actualUserPrompt, aiType, effectiveDataMap);
             
             // 🎯 标记AI任务完成，检查整轮对话是否结束
             boolean allCompleted = sessionStateManager.markAiCompleted(sessionId, aiType);
@@ -373,7 +408,7 @@ public class EngineMessageRouter {
             }
             
         } catch (Exception e) {
-            log.error("[AI存储] 保存{}结果失败 - 会话: {}, 错误: {}", aiType, sessionId, e.getMessage());
+            log.error("[AI存储] stage=storeResult errorCategory=DB_SAVE_FAILED 保存{}结果失败 - 会话: {}, 错误: {}", aiType, sessionId, e.getMessage());
             // 即使保存失败也标记为完成，避免阻塞其他任务
             sessionStateManager.markAiFailed(sessionId, aiType, "数据库保存失败: " + e.getMessage());
         }
@@ -440,6 +475,28 @@ public class EngineMessageRouter {
         return value != null ? value.toString() : null;
     }
 
+    /**
+     * 安全获取 Engine 下发的 payload.data，避免强转非 Map 类型导致 ClassCastException。
+     */
+    private Map<String, Object> safeGetDataMap(Map<String, Object> payload) {
+        if (payload == null) {
+            return null;
+        }
+        Object raw = payload.get("data");
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof Map<?, ?> m) {
+            Map<String, Object> out = new HashMap<>();
+            for (Map.Entry<?, ?> e : m.entrySet()) {
+                out.put(String.valueOf(e.getKey()), e.getValue());
+            }
+            return out;
+        }
+        log.warn("[AI存储] payload.data 非 Map，已忽略 - type={}", raw.getClass().getName());
+        return null;
+    }
+
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> extractStoredResults(Map<String, Object> existingDataMap) {
         Object resultsObj = existingDataMap.get("results");
@@ -464,12 +521,17 @@ public class EngineMessageRouter {
         List<Map<String, Object>> mergedResults =
             existingResults != null ? new ArrayList<>(existingResults) : new ArrayList<>();
 
-        if (dataMap == null || aiType == null || aiType.isEmpty()) {
+        if (dataMap == null) {
             return mergedResults;
+        }
+        String mergeAiType = aiType;
+        if (mergeAiType == null || mergeAiType.isEmpty()) {
+            mergeAiType = "unknown";
+            log.warn("[AI存储] mergeAiResults: aiType 为空，使用 unknown");
         }
 
         Map<String, Object> currentResult = new HashMap<>();
-        currentResult.put("aiType", aiType);
+        currentResult.put("aiType", mergeAiType);
         currentResult.put("answer", getStringValue(dataMap, "answer"));
         currentResult.put("textContent", getStringValue(dataMap, "textContent"));
         currentResult.put("conversationScreenshot", getStringValue(dataMap, "conversationScreenshot"));
@@ -484,7 +546,7 @@ public class EngineMessageRouter {
         for (int i = 0; i < mergedResults.size(); i++) {
             Map<String, Object> existing = mergedResults.get(i);
             String existingAiType = getStringValue(existing, "aiType");
-            if (aiType.equalsIgnoreCase(existingAiType)) {
+            if (mergeAiType.equalsIgnoreCase(existingAiType)) {
                 mergedResults.set(i, currentResult);
                 updated = true;
                 break;
@@ -598,7 +660,9 @@ public class EngineMessageRouter {
                 chatData.put("dbChatId", aiChatId);
                 break;
             case "tongyi":
+            case "qianwen":
             case "通义":
+            case "千问":
             case "通义千问":
             case "tone":
                 chatData.put("toneChatId", aiChatId);
@@ -609,14 +673,11 @@ public class EngineMessageRouter {
             case "kimi":
                 chatData.put("kimiChatId", aiChatId);
                 break;
-            case "baidu":
-            case "百度":
-            case "百度ai":
-                chatData.put("baiduChatId", aiChatId);
-                break;
             case "metaso":
             case "秘塔":
             case "秘塔ai":
+            case "mita":
+            case "秘塔搜索":
                 chatData.put("metasoChatId", aiChatId);
                 break;
             case "minimax":
@@ -632,6 +693,21 @@ public class EngineMessageRouter {
                 log.debug("[AI存储] 未知AI类型: {}, 会话ID: {}", aiType, aiChatId);
                 break;
         }
+    }
+
+    /**
+     * 从 Engine 回包 payload 中提取厂商侧会话 ID（payload.data.chatId，与前端分组 chatId 区分）
+     */
+    private String extractPlatformChatIdFromPayload(Map<String, Object> payload) {
+        if (payload == null) {
+            return null;
+        }
+        Object data = payload.get("data");
+        if (data instanceof Map<?, ?> dataMap) {
+            Object cid = dataMap.get("chatId");
+            return cid != null ? String.valueOf(cid) : null;
+        }
+        return null;
     }
 
     /**

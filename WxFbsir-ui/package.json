@@ -1,7 +1,7 @@
 {
   "name": "WxFbsir",
   "version": "1.0.0",
-  "description": "微信福帮手后台管理",
+  "description": "福帮手数据智能化系统后台管理",
   "author": "WxFbsir",
   "license": "MIT",
   "type": "module",
@@ -9,11 +9,12 @@
     "dev": "vite",
     "build:prod": "vite build",
     "build:stage": "vite build --mode staging",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:aigc-mapper": "node scripts/verify-ai-capability-mapper.mjs"
   },
   "repository": {
     "type": "git",
-    "url": "https://gitee.com/U3W-AI/RuoYi-Vue.git"
+    "url": "https://github.com/duhongchao-Fbsir/FBsir.git"
   },
   "dependencies": {
     "@element-plus/icons-vue": "2.3.1",

@@ -67,8 +67,8 @@
 #### 1.1 构建后端项目
 
 ```bash
-# 进入项目根目录
-cd d:\code\project\U3W-AI-fbsir\U3W-AI-fbsir
+# 进入项目根目录（请替换为本机实际路径）
+cd D:\path\to\FBsir
 
 # 构建项目
 mvn clean package -DskipTests
@@ -85,7 +85,7 @@ java -jar WxFbsir-admin/target/WxFbsir-admin.jar
 
 ```bash
 # 运行Engine服务（如果需要）
-java -jar WxFbsir-engine/target/WxFbsir-engine.jar
+java -jar WxFbsir-engine/target/wxfbsir-engine-[engine.version].jar
 ```
 
 ### 2. 前端部署
@@ -244,5 +244,20 @@ location / {
 
 ---
 
-**最后更新**: 2026-03-16  
-**文档版本**: v1.0.0
+## OpenClaw Gateway（npm 全局）同步
+
+Admin 仅对 **`health_check_url`** 做 HTTP GET，不依赖本机是否安装 OpenClaw；若在 **Windows 开发机** 上本地跑 Gateway，可用全局包：
+
+```bash
+npm install -g openclaw@latest
+openclaw --version
+```
+
+**本机验证记录（维护）**：2026-04-14，`npm` 全局包版本 **2026.4.14**，CLI 输出示例 **`OpenClaw 2026.4.14 (323493f)`**；默认端口以启动参数为准（项目内 `tools/start-openclaw.ps1` 使用 **18789**，健康检查路径一般为 **`/health`**）。
+
+升级后若 Gateway 已在运行，请**重启**进程后再验 Admin 白名单探测。
+
+---
+
+**最后更新**: 2026-04-14  
+**文档版本**: v1.0.1

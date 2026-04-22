@@ -1,0 +1,45 @@
+# 本地开发依赖：MySQL 8 + Redis（与 application-druid.yml 默认 root/root、127.0.0.1:3306 对齐）
+# 首次启动会导入 sql/wxfbsir.sql；数据持久化在卷 wxfbsir-mysql-data
+#
+# Profiles（避免本机已有 Redis 占 6379 时再拉 redis 容器失败）：
+#   仅 MySQL : docker compose --profile mysql up -d
+#   MySQL+Redis: docker compose --profile full up -d
+# 或： .\tools\start-local-deps.ps1（自动按端口选择 profile）
+# 重置数据卷： .\tools\reset-local-docker.ps1
+
+name: wxfbsir
+
+services:
+  mysql:
+    profiles: ["mysql", "full"]
+    image: mysql:8.0
+    container_name: wxfbsir-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - wxfbsir-mysql-data:/var/lib/mysql
+      - ./sql/wxfbsir.sql:/docker-entrypoint-initdb.d/01-wxfbsir.sql:ro
+    command:
+      - mysqld
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 50s
+
+  redis:
+    profiles: ["redis", "full"]
+    image: redis:7-alpine
+    container_name: wxfbsir-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+volumes:
+  wxfbsir-mysql-data:

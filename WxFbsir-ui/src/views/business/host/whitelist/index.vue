@@ -72,9 +72,10 @@
           <el-tag v-else type="success">团队</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="主机类型" align="center" prop="hostType" width="100">
+      <el-table-column label="主机类型" align="center" prop="hostType" width="110">
         <template #default="scope">
           <el-tag v-if="scope.row.hostType === 'openclaw'" type="primary">OpenClaw</el-tag>
+          <el-tag v-else-if="scope.row.hostType === 'hermes'" type="success">Hermes</el-tag>
           <el-tag v-else type="warning">Engine</el-tag>
         </template>
       </el-table-column>
@@ -121,7 +122,7 @@
             type="success"
             icon="Check"
             @click="handleHealthCheck(scope.row)"
-            v-if="scope.row.hostType === 'openclaw'"
+            v-if="scope.row.hostType === 'openclaw' || scope.row.hostType === 'hermes'"
             v-hasPermi="['business:host:whitelist:edit']"
           >健康检查</el-button>
           <el-button
@@ -174,10 +175,11 @@
           <el-select v-model="form.hostType" placeholder="请选择主机类型">
             <el-option label="Engine" value="engine" />
             <el-option label="OpenClaw" value="openclaw" />
+            <el-option label="Hermes" value="hermes" />
           </el-select>
         </el-form-item>
         <el-form-item label="健康检查URL" prop="healthCheckUrl">
-          <el-input v-model="form.healthCheckUrl" placeholder="请输入健康检查URL（仅OpenClaw类型需要）" />
+          <el-input v-model="form.healthCheckUrl" placeholder="OpenClaw / Hermes 必填可访问的 HTTP(S) 地址，Engine 可留空" />
         </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-radio-group v-model="form.status">
@@ -321,7 +323,7 @@ function handleUpdate(row) {
   getWhitelist(id).then(response => {
     form.value = response.data;
     open.value = true;
-    title.value = "修改主机ID白名单";
+    title.value = "修改主机白名单（Engine / OpenClaw / Hermes）";
   });
 }
 

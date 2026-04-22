@@ -1,5 +1,6 @@
 package com.wx.fbsir.business.websocket.domain;
 
+import com.wx.fbsir.common.annotation.Excel;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
@@ -14,23 +15,38 @@ public class WsHostWhitelist implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private Long id;
+    @Excel(name = "主机ID")
     private String hostId;
+    @Excel(name = "主机名称")
     private String hostName;
+    @Excel(name = "负责人")
     private String ownerName;
+    @Excel(name = "联系方式")
     private String ownerContact;
+    @Excel(name = "是否团队", readConverterExp = "0=个人,1=团队")
     private Integer isTeam;
+    @Excel(name = "团队名称")
     private String teamName;
+    @Excel(name = "允许IP")
     private String allowedIps;
+    @Excel(name = "启用状态", readConverterExp = "0=禁用,1=启用")
     private Integer status;
+    @Excel(name = "过期时间", dateFormat = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime expireTime;
+    @Excel(name = "备注")
     private String remark;
     private Integer delFlag;
+    @Excel(name = "创建者")
     private String createBy;
+    @Excel(name = "创建时间", dateFormat = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
     private String updateBy;
     private LocalDateTime updateTime;
+    @Excel(name = "主机类型")
     private String hostType;
+    @Excel(name = "健康检查URL")
     private String healthCheckUrl;
+    @Excel(name = "在线状态")
     private String onlineStatus;
 
     public Long getId() { return id; }
