@@ -27,7 +27,8 @@ INSERT INTO sys_menu (
     create_by, create_time, remark
 )
 VALUES (
-    'FBS运营管理', 1000, 10, 'fbs', NULL,
+    -- parent_id 必须为 0（顶级目录）；勿填 1000，会与若依内置菜单 menu_id 冲突
+    'FBS运营管理', 0, 10, 'fbs', NULL,
     1, 'M', '0', '0', '', 'config',
     'admin', SYSDATE(), 'FBS场景包与授权码运营菜单'
 );
