@@ -285,6 +285,39 @@ export const ENGINE_CONFIGS = reactive([
 
     // 排序权重（数字越小越靠前）
     order: 8
+  },
+
+  // =========================================================================
+  // 企业微信AI助手配置（其他服务）
+  // =========================================================================
+  {
+    id: 'qyweixin',
+    displayName: '企业微信AI助手',
+    description: '企业微信管理后台AI助手，需企业微信管理员扫码登录后操作智能机器人工作流',
+    type: SERVICE_TYPE.OTHER,
+
+    // 图标配置（使用企业微信favicon）
+    icon: {
+      type: 'url',
+      value: 'https://work.weixin.qq.com/favicon.ico',
+    },
+
+    // 消息类型配置
+    messageTypes: {
+      checkLogin: 'QYWEIXIN_CHECK_LOGIN',   // 登录状态检测
+      scanLogin: 'QYWEIXIN_SCAN_LOGIN',     // 企业微信扫码登录
+    },
+
+    // 默认状态
+    enabled: true,
+    loggedIn: false,
+    requireLogin: true,
+
+    // 选项配置（无额外选项）
+    options: [],
+
+    // 排序权重
+    order: 9
   }
 
   // =========================================================================
@@ -484,32 +517,6 @@ export function initServiceOptionsState(serviceId) {
   return state
 }
 
-/** Gitee：开源探索 / 仓库问答 / 帮助中心 三选一（与 options.exclusive 配置一致） */
-export const GITEE_MODE_OPTION_IDS = ['openSourceExploration', 'repositoryQA', 'helpCenter']
-
-/**
- * Gitee 模式互斥切换：模式项三选一；非模式项（如 enableFileUpload）走独立开关
- * @returns {{ newState: Record<string, boolean>, needRequestRepositoryChoices: boolean }}
- */
-export function applyGiteeOptionsToggle(optionId, newValue, currentState) {
-  const newState = { ...currentState }
-  if (GITEE_MODE_OPTION_IDS.includes(optionId)) {
-    if (newValue) {
-      GITEE_MODE_OPTION_IDS.forEach(key => {
-        newState[key] = key === optionId
-      })
-      return {
-        newState,
-        needRequestRepositoryChoices: optionId === 'repositoryQA'
-      }
-    }
-    newState[optionId] = false
-    return { newState, needRequestRepositoryChoices: false }
-  }
-  newState[optionId] = newValue
-  return { newState, needRequestRepositoryChoices: false }
-}
-
 /**
  * 处理互斥选项切换
  */
@@ -543,7 +550,7 @@ export function updateServiceLoginStatus(serviceId, isLoggedIn) {
 }
 
 /**
- * 动态更新服务可选项（如 Gitee 仓库问答二级菜单）
+ * 动态更新服务可选项（如下拉候选）
  */
 export function updateServiceDynamicChoices(serviceId, fieldName, choices) {
   const config = getEngineConfig(serviceId)

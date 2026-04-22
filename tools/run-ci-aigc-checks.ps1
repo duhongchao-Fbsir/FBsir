@@ -7,15 +7,10 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
 
-$mvnExe = $null
-if (Get-Command mvn -ErrorAction SilentlyContinue) {
-    $mvnExe = 'mvn'
-} else {
-    $bundled = Join-Path $PSScriptRoot '..\build-tools\apache-maven-3.9.15\bin\mvn.cmd'
-    if (Test-Path $bundled) { $mvnExe = $bundled }
-}
+. (Join-Path $PSScriptRoot 'Resolve-Maven.ps1')
+$mvnExe = Get-MavenExecutable -RepoRoot $repo
 if (-not $mvnExe) {
-    Write-Error '未找到 mvn：请将 Apache Maven 加入 PATH，或将便携包置于 build-tools\apache-maven-3.9.15\'
+    Write-Error '未找到 mvn：可将 Apache Maven 加入 PATH，设置 MAVEN_HOME，设置 WXFBSIR_MVN，或放置便携包于 .tools\maven-extract\ 或 build-tools\'
     exit 1
 }
 

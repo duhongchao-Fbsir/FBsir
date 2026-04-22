@@ -50,6 +50,14 @@ wxfbsir:
     # 节点版本（用于版本追踪和兼容性检查）
     # 版本号从 pom.xml 的 engine.version 属性自动注入
     version: @engine.version@
+
+    # 企微工作流 Playwright：每次 IMPORT_DRAFT / VALIDATE / EDITOR_PROBE 完成后追加一行 JSON 到本地文件（无需从 Admin 复制结果）
+    qyweixin:
+      automation-log-enabled: true
+      automation-log-file: logs/qyweixin-automation.jsonl
+      # 工作流克隆：面板/菜单增量学习（分支样式不可测时靠记忆纠偏）
+      clone-learning-enabled: true
+      clone-learning-file: logs/qywx-clone-learning.json
     
     # 连接配置
     connection:

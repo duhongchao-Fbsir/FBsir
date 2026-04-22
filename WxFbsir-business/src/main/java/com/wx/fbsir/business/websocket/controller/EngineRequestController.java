@@ -101,7 +101,7 @@ public class EngineRequestController {
         if (isOffShelfType(type)) {
             return ResponseEntity.ok(buildError(
                 "SERVICE_OFF_SHELF",
-                "秘塔与 Gitee AI 服务已下架，当前不可用。请改用 DeepSeek / 豆包 / 千问 / 元宝。"
+                "Gitee AI Chat 与秘塔（Mita）已从引擎下架，当前不可用。请改用 DeepSeek / 豆包 / 千问 / 元宝。"
             ));
         }
         

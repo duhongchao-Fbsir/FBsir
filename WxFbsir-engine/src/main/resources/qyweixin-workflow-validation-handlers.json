@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1",
+  "comment": "页面「检查」/弹窗红字 -> Engine 占位步骤；match 为满足任一则执行（企微文案会变体）",
+  "roundsMaxDefault": 6,
+  "handlers": [
+    {
+      "id": "set-variable-list-empty",
+      "matchAny": ["变量列表不能为空", "设置变量：变量列表"],
+      "steps": ["SET_VARIABLE_MINIMAL"]
+    },
+    {
+      "id": "http-url-missing",
+      "matchAny": ["请求地址不能为空", "URL不能为空", "接口地址不能为空"],
+      "steps": ["HTTP_REQUEST_PLACEHOLDER"]
+    }
+  ]
+}

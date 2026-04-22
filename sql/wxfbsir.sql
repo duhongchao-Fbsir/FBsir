@@ -232,6 +232,7 @@ insert into sys_menu values('125',  '连接记录与在线', '7', '3', 'connecti
 insert into sys_menu values('126',  'WebSocket调试', '7', '4', 'debug', 'business/debug/index', '', '', 1, 0, 'C', '0', '0', 'business:debug:view', 'bug', 'admin', sysdate(), '', null, 'WebSocket调试工具，用于开发测试');
 insert into sys_menu values('148',  '工作流节点编辑', '7', '5', 'apps', 'business/content/NodeEditWithStrategy/index', '', '', 1, 0, 'C', '0', '0', 'business:host:apps:view', 'component', 'admin', sysdate(), '', null, '工作流节点编辑工具，支持编辑和发布元器工作流节点（内测功能）');
 insert into sys_menu values('149',  '策略管理', '7', '6', 'strategy', 'business/content/NodeEditWithStrategy/strategy', '', '', 1, 0, 'C', '0', '0', 'system:strategy:view', 'build', 'admin', sysdate(), '', null, '策略参数映射管理，支持成本优先、质量优先、最大回复Token等策略配置（内测功能）');
+insert into sys_menu values('154',  '企微工作流', '7', '7', 'qyweixin-workflow', 'business/host/qyweixinWorkflow/index', '', '', 1, 0, 'C', '0', '0', 'business:host:qyweixinWorkflow:view', 'guide', 'admin', sysdate(), '', null, '企业微信智能机器人/工作流实验页（Engine QYWEIXIN_*）；侧栏简称「企微工作流」');
 -- gitee管理子菜单（parent_id=8）
 insert into sys_menu values('127',  '使用统计', '8',   '1', 'usage-report', 'business/gitee/giteeUsageReport', '', '', 1, 0, 'C', '0', '0', 'business:gitee:usage:list', 'chart', 'admin', sysdate(), '', null, 'Gitee模块使用统计菜单');
 insert into sys_menu values('128',  'gitee分析', '8',  '2', 'gitee-analysis', 'business/gitee/giteeAnalysis', '', '', 1, 0, 'C', '0', '0', 'business:gitee:analysis:view', 'chart', 'admin', sysdate(), '', null, 'Gitee分析菜单');
@@ -676,6 +677,7 @@ insert into sys_role_menu values ('2', '1131'); -- 我的申请记录撤回
 -- 二级菜单-工作流节点编辑和策略管理
 insert into sys_role_menu values ('2', '148');  -- 工作流节点编辑
 insert into sys_role_menu values ('2', '149');  -- 策略管理
+insert into sys_role_menu values ('2', '154');  -- 企微智能体工作流
 -- 按钮权限-工作流节点编辑
 insert into sys_role_menu values ('2', '1132'); -- 工作流节点编辑查看
 -- 按钮权限-策略管理

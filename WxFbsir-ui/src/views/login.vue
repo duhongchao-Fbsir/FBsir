@@ -72,61 +72,7 @@
           <span v-else>登 录 中...</span>
         </el-button>
       </el-form-item>
-      <div class="divider">
-        <span>或</span>
-      </div>
-      <div class="social-login">
-        <button class="social-btn" type="button" @click="handleGiteeLogin">
-          <span class="social-icon gitee">G</span>
-          <span class="social-text">使用 Gitee 登录</span>
-          <span v-if="lastUsedProvider === 'gitee'" class="social-badge">上次使用</span>
-        </button>
-      </div>
     </el-form>
-    <el-dialog
-      v-model="giteeBindVisible"
-      title="绑定 Gitee 账号"
-      width="360px"
-      :close-on-click-modal="false"
-      @close="handleGiteeBindClose"
-    >
-      <div class="gitee-bind-tip">检测到未绑定的 Gitee 账号，请选择绑定已有账号或自动创建账号。</div>
-      <el-form class="gitee-bind-form">
-        <el-form-item>
-          <el-input
-            v-model="giteeBindForm.username"
-            placeholder="已有账号"
-            auto-complete="off"
-            size="large"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-input
-            v-model="giteeBindForm.password"
-            type="password"
-            placeholder="账号密码"
-            auto-complete="off"
-            size="large"
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button
-          type="primary"
-          :loading="giteeBindLoading"
-          @click="handleGiteeBindExisting"
-        >
-          绑定已有账号
-        </el-button>
-        <el-button
-          plain
-          :loading="giteeBindLoading"
-          @click="handleGiteeBindCreate"
-        >
-          自动创建账号
-        </el-button>
-      </template>
-    </el-dialog>
     <!--  底部  -->
     <div class="el-login-footer">
       <span>{{ footerContent }}</span>
@@ -136,7 +82,6 @@
 
 <script setup>
 import { getCodeImg } from "@/api/login"
-import request from "@/utils/request"
 import Cookies from "js-cookie"
 import { encrypt, decrypt } from "@/utils/jsencrypt"
 import { setToken } from "@/utils/auth"
@@ -144,7 +89,7 @@ import useUserStore from '@/store/modules/user'
 import usePermissionStore from '@/store/modules/permission'
 import { isHttp } from "@/utils/validate"
 import defaultSettings from '@/settings'
-import { ElMessage, ElMessageBox } from "element-plus"
+import { ElMessage } from "element-plus"
 
 const title = import.meta.env.VITE_APP_TITLE
 const footerContent = defaultSettings.footerContent
@@ -174,13 +119,6 @@ const captchaEnabled = ref(true)
 // 注册开关
 const registerEnabled = ref(false)
 const redirect = ref(undefined)
-const giteeBindVisible = ref(false)
-const giteeBindLoading = ref(false)
-const giteeBindToken = ref("")
-const giteeBindForm = ref({
-  username: "",
-  password: ""
-})
 
 watch(route, (newRoute) => {
     redirect.value = newRoute.query && newRoute.query.redirect
@@ -191,7 +129,6 @@ function handleLogin() {
   proxy.$refs.loginRef.validate(valid => {
     if (valid) {
       loading.value = true
-      setLastUsed("password")
       // 勾选了需要记住密码设置在 cookie 中设置记住用户名和密码
       if (loginForm.value.rememberMe) {
         Cookies.set("username", loginForm.value.username, { expires: 30 })
@@ -246,32 +183,6 @@ function getCookie() {
   }
 }
 
-const lastUsedProvider = ref("")
-
-function setLastUsed(provider) {
-  lastUsedProvider.value = provider
-  localStorage.setItem("lastLoginProvider", provider)
-}
-
-async function handleGiteeLogin() {
-  setLastUsed("gitee")
-  try {
-    const probe = await request({
-      url: "/gitee/oauth/configured",
-      method: "get",
-      headers: { isToken: false }
-    })
-    const configured = probe?.data?.configured === true
-    if (!configured) {
-      ElMessage.warning(probe?.data?.message || "当前环境未配置 Gitee OAuth")
-      return
-    }
-    window.location.href = `${import.meta.env.VITE_APP_BASE_API || ""}/gitlogin`
-  } catch (e) {
-    ElMessage.error("检查 Gitee 配置失败，请稍后重试")
-  }
-}
-
 function handleOauthToken() {
   const giteeError = route.query?.giteeError
   if (giteeError) {
@@ -283,14 +194,11 @@ function handleOauthToken() {
   }
   const bindToken = route.query?.giteeBindToken
   if (bindToken) {
-    giteeBindToken.value = String(bindToken)
-    giteeBindVisible.value = true
+    ElMessage.warning("登录页已不再提供 Gitee 绑定，请使用账号密码登录。")
+    const cleanQuery = { ...route.query }
+    delete cleanQuery.giteeBindToken
+    router.replace({ path: "/login", query: cleanQuery })
     return
-  }
-  const boundUsername = route.query?.giteeUsername
-  if (boundUsername && route.query?.giteeBound) {
-    loginForm.value.username = String(boundUsername)
-    ElMessage.info("Gitee账号已绑定，请输入密码完成登录")
   }
   let token = route.query?.oauthToken || route.query?.token
   let targetPath = ""
@@ -343,115 +251,8 @@ function completeOauthLogin(token, targetPath = "", targetQuery = {}) {
   })
 }
 
-function resetGiteeBindForm() {
-  giteeBindForm.value.username = ""
-  giteeBindForm.value.password = ""
-}
-
-function tryAutoLogin(username, password) {
-  loginForm.value.username = username
-  loginForm.value.password = password
-  if (captchaEnabled.value) {
-    ElMessage.info("请输入验证码后点击登录完成认证")
-    return
-  }
-  loading.value = true
-  userStore.login(loginForm.value).then(() => {
-    router.replace({ path: "/index" })
-  }).catch(() => {
-    loading.value = false
-  })
-}
-
-async function handleGiteeBindExisting() {
-  if (!giteeBindToken.value) {
-    ElMessage.error("绑定信息已失效，请重新授权")
-    return
-  }
-  if (!giteeBindForm.value.username || !giteeBindForm.value.password) {
-    ElMessage.warning("请输入账号和密码")
-    return
-  }
-  giteeBindLoading.value = true
-  try {
-    const res = await request({
-      url: "/gitee/bind",
-      method: "post",
-      headers: {
-        isToken: false,
-        repeatSubmit: false
-      },
-      data: {
-        bindToken: giteeBindToken.value,
-        username: giteeBindForm.value.username,
-        password: giteeBindForm.value.password
-      }
-    })
-    giteeBindVisible.value = false
-    const username = giteeBindForm.value.username
-    const password = giteeBindForm.value.password
-    resetGiteeBindForm()
-    tryAutoLogin(username, password)
-  } catch (error) {
-    ElMessage.error(error?.message || "绑定失败，请重试")
-  } finally {
-    giteeBindLoading.value = false
-  }
-}
-
-async function handleGiteeBindCreate() {
-  if (!giteeBindToken.value) {
-    ElMessage.error("绑定信息已失效，请重新授权")
-    return
-  }
-  giteeBindLoading.value = true
-  try {
-    const res = await request({
-      url: "/gitee/create",
-      method: "post",
-      headers: {
-        isToken: false,
-        repeatSubmit: false
-      },
-      data: {
-        bindToken: giteeBindToken.value
-      }
-    })
-    giteeBindVisible.value = false
-    resetGiteeBindForm()
-    if (res.username && res.password) {
-      const message = `
-        <div style="line-height:1.6;">
-          <div>账号已创建，请保存以下信息：</div>
-          <div>用户名：<strong>${res.username}</strong></div>
-          <div>初始密码：<strong>${res.password}</strong></div>
-        </div>
-      `
-      ElMessageBox.alert(message, "Gitee 账号创建成功", {
-        dangerouslyUseHTMLString: true,
-        type: "success",
-        confirmButtonText: "我已保存"
-      }).then(() => {
-        tryAutoLogin(res.username, res.password)
-      })
-    } else {
-      ElMessage.info("账号已创建，请使用新账号登录")
-    }
-  } catch (error) {
-    ElMessage.error(error?.message || "创建账号失败，请重试")
-  } finally {
-    giteeBindLoading.value = false
-  }
-}
-
-function handleGiteeBindClose() {
-  giteeBindVisible.value = false
-  resetGiteeBindForm()
-}
-
 getCode()
 getCookie()
-lastUsedProvider.value = localStorage.getItem("lastLoginProvider") || ""
 </script>
 
 <style lang='scss' scoped>
@@ -529,76 +330,6 @@ lastUsedProvider.value = localStorage.getItem("lastLoginProvider") || ""
 }
 .login-form :deep(.el-input__wrapper.is-focus) {
   box-shadow: 0 0 0 2px rgba(59, 108, 246, 0.25);
-}
-.social-login {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-.social-btn {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  background: #ffffff;
-  border: 1px solid #e3e6ee;
-  border-radius: 8px;
-  font-size: 13px;
-  color: #222;
-  cursor: pointer;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-.social-btn:hover {
-  border-color: #cfd6e6;
-  box-shadow: 0 6px 16px rgba(17, 24, 39, 0.08);
-}
-.social-icon {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: #ffffff;
-  background: #111827;
-}
-.social-icon.gitee {
-  background: #c71d23;
-}
-.social-text {
-  flex: 1;
-  text-align: center;
-  font-weight: 600;
-}
-.social-badge {
-  position: absolute;
-  right: 10px;
-  top: -8px;
-  padding: 2px 6px;
-  font-size: 10px;
-  color: #ffffff;
-  background: #3b6cf6;
-  border-radius: 10px;
-}
-.divider {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 6px 0 14px;
-  color: #9aa3b2;
-  font-size: 12px;
-}
-.divider::before,
-.divider::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: #e4e7ee;
-  margin: 0 8px;
 }
 .field-block {
   margin-bottom: 10px;
@@ -690,14 +421,5 @@ lastUsedProvider.value = localStorage.getItem("lastLoginProvider") || ""
       }
     }
   }
-}
-.gitee-bind-tip {
-  font-size: 12px;
-  color: #6b7280;
-  margin-bottom: 12px;
-  line-height: 1.5;
-}
-.gitee-bind-form :deep(.el-input__wrapper) {
-  border-radius: 8px;
 }
 </style>

@@ -20,7 +20,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 豆包（Doubao）网页版 WebSocket 控制器，流程对齐 DeepSeek / Gitee。
+ * 豆包（Doubao）网页版 WebSocket 控制器，流程对齐 DeepSeek 等浏览器型 AI。
  */
 @Controller
 public class DoubaoController extends StreamTaskHelper {
@@ -236,7 +236,7 @@ public class DoubaoController extends StreamTaskHelper {
         String uploadedFileUrl = normalized.getFileUploadUrl();
         String mode = normalized.getDeepseekMode();
 
-        StreamTask task = startAiStreamTask(userId, sessionId, aiType, 6000);
+        StreamTask task = startAiStreamTask(message, sessionId, aiType, 6000);
         BrowserSession session = null;
 
         try {
@@ -388,7 +388,7 @@ public class DoubaoController extends StreamTaskHelper {
                 }
             });
 
-            String answer = doubaoUtil.sendMessageAndWaitResponse(activePage, query, enableDeepThinking);
+            String answer = doubaoUtil.sendMessageAndWaitResponse(activePage, query, enableDeepThinking, task::sendLog);
             task.stop();
 
             activePage.waitForTimeout(1500);
@@ -417,7 +417,11 @@ public class DoubaoController extends StreamTaskHelper {
             log.info("[Doubao咨询] 完成 - 会话: {}, 耗时: {}s", sessionId, resultData.get("elapsedTime"));
         } catch (Exception e) {
             log.error("[Doubao咨询] 失败", e);
-            task.sendError("咨询失败: " + e.getMessage());
+            if (e.getMessage() != null && e.getMessage().contains("HUMAN_VERIFICATION_STUCK")) {
+                task.sendError("豆包触发人机验证且长时间未通过，请完成人机验证后重试");
+            } else {
+                task.sendError("咨询失败: " + e.getMessage());
+            }
         } finally {
             task.stop();
             if (session != null) {

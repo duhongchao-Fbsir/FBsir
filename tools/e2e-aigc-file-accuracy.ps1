@@ -139,6 +139,24 @@ function Test-MarkerPresent {
     return $Text.Contains($Required)
 }
 
+function Test-HumanVerificationSignal {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+    return [bool]($Text -match '(?i)(人机验证|安全验证|captcha|human verification)')
+}
+
+function Test-HumanVerificationPassed {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+    return [bool]($Text -match '(?i)(人机验证.{0,20}(已通过|继续执行)|human verification passed)')
+}
+
+function Test-HumanVerificationStuck {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+    return [bool]($Text -match '(?i)(human_verification_stuck|人机验证.{0,20}(未通过|长时间))')
+}
+
 $results = @()
 
 foreach ($ai in $ais) {
@@ -149,7 +167,14 @@ foreach ($ai in $ais) {
     $null = $ws.ConnectAsync([Uri]$wsUri, $ct).Wait(20000)
     if ($ws.State -ne [System.Net.WebSockets.WebSocketState]::Open) {
         $results += [pscustomobject]@{
-            AI = $ai.id; Outcome = "WS_FAIL"; MarkerHit = $false; Detail = "WebSocket not open"
+            AI = $ai.id
+            Outcome = "WS_FAIL"
+            MarkerHit = $false
+            HumanVerifyDetected = $false
+            HumanVerifyPassed = $false
+            HumanVerifyStuck = $false
+            Detail = "WebSocket not open"
+            Snippet = ""
         }
         continue
     }
@@ -182,18 +207,28 @@ foreach ($ai in $ais) {
     $outcome = "TIMEOUT"
     $detail = ""
     $answer = ""
+    $hvDetected = $false
+    $hvPassed = $false
+    $hvStuck = $false
     while ([DateTime]::UtcNow -lt $deadlineUtc) {
         $txt = Receive-OneWsTextMessage -Socket $ws -Buffer $buf -DeadlineUtc $deadlineUtc
         if ($null -eq $txt) { continue }
         try { $j = $txt | ConvertFrom-Json } catch { continue }
         $t = [string]$j.type
-        if ($t -ne "AI_TASK_RESULT" -and $t -ne "AI_TASK_ERROR") { continue }
+        if ($t -ne "AI_TASK_RESULT" -and $t -ne "AI_TASK_ERROR" -and $t -ne "AI_TASK_LOG") { continue }
         $psid = $null
         if ($j.payload) {
             $psid = $j.payload.sessionId
             if (-not $psid -and $j.payload.payload) { $psid = $j.payload.payload.sessionId }
         }
         if ($psid -and $psid -ne $sessionId) { continue }
+
+        if ($t -eq "AI_TASK_LOG") {
+            $logMsg = [string]$j.payload.message
+            if (Test-HumanVerificationSignal -Text $logMsg) { $hvDetected = $true }
+            if (Test-HumanVerificationPassed -Text $logMsg) { $hvPassed = $true }
+            continue
+        }
 
         if ($t -eq "AI_TASK_RESULT") {
             if ($j.payload.success -eq $true) {
@@ -206,6 +241,8 @@ foreach ($ai in $ais) {
         } else {
             $outcome = "TASK_ERROR"
             $detail = [string]$j.payload.errorMessage
+            if (Test-HumanVerificationSignal -Text $detail) { $hvDetected = $true }
+            if (Test-HumanVerificationStuck -Text $detail) { $hvStuck = $true }
         }
         break
     }
@@ -220,6 +257,9 @@ foreach ($ai in $ais) {
         AI = $ai.id
         Outcome = $outcome
         MarkerHit = $hit
+        HumanVerifyDetected = $hvDetected
+        HumanVerifyPassed = $hvPassed
+        HumanVerifyStuck = $hvStuck
         Detail = $detail
         Snippet = $snippet
     }

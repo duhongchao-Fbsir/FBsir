@@ -1,0 +1,11 @@
+{
+  "sheets": {
+    "init": {
+      "columns": [
+        { "name": "genre", "type": "string" },
+        { "name": "outlineTarget", "type": "string" },
+        { "name": "traceSeed", "type": "string" }
+      ]
+    }
+  }
+}

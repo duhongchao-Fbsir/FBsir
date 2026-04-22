@@ -1,8 +1,10 @@
 package com.wx.fbsir.engine.capability.base;
 
+import com.alibaba.fastjson2.JSON;
 import com.wx.fbsir.engine.websocket.client.WebSocketClientManager;
 import com.wx.fbsir.engine.websocket.message.EngineMessage;
 import com.wx.fbsir.engine.websocket.message.MessageType;
+import com.alibaba.fastjson2.JSONObject;
 import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,6 +61,57 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public abstract class StreamTaskHelper {
 
+    /** Engine 入站 JSON 顶层的 requestId/sourceType/sourceClientId，回传到 Admin 以便定向 WebSocket */
+    private static final class WsRouting {
+        static final WsRouting EMPTY = new WsRouting(null, null, null);
+        final String requestId;
+        final String sourceType;
+        final String sourceClientId;
+
+        WsRouting(String requestId, String sourceType, String sourceClientId) {
+            this.requestId = requestId;
+            this.sourceType = sourceType;
+            this.sourceClientId = sourceClientId;
+        }
+    }
+
+    private static WsRouting parseRouting(EngineMessage message) {
+        if (message == null) {
+            return WsRouting.EMPTY;
+        }
+        String raw = message.getRawJson();
+        if (raw == null || raw.isBlank()) {
+            return WsRouting.EMPTY;
+        }
+        try {
+            JSONObject root = JSON.parseObject(raw);
+            if (root == null) {
+                return WsRouting.EMPTY;
+            }
+            return new WsRouting(
+                root.getString("requestId"),
+                root.getString("sourceType"),
+                root.getString("sourceClientId"));
+        } catch (Exception e) {
+            return WsRouting.EMPTY;
+        }
+    }
+
+    private static void applyWsRouting(EngineMessage.Builder builder, WsRouting routing) {
+        if (routing == null || routing == WsRouting.EMPTY) {
+            return;
+        }
+        if (routing.requestId != null) {
+            builder.payload("requestId", routing.requestId);
+        }
+        if (routing.sourceType != null) {
+            builder.payload("sourceType", routing.sourceType);
+        }
+        if (routing.sourceClientId != null) {
+            builder.payload("sourceClientId", routing.sourceClientId);
+        }
+    }
+
     protected final Logger log = LoggerFactory.getLogger(getClass());
 
     /**
@@ -84,7 +137,7 @@ public abstract class StreamTaskHelper {
      * @return 流式任务对象
      */
     protected StreamTask startStreamTask(String userId, String sessionId) {
-        return new StreamTask(userId, sessionId, "unknown", 5000, false);
+        return new StreamTask(userId, sessionId, "unknown", 5000, false, WsRouting.EMPTY);
     }
 
     /**
@@ -99,7 +152,7 @@ public abstract class StreamTaskHelper {
      * @return 流式任务对象
      */
     protected StreamTask startStreamTask(String userId, String sessionId, long intervalMillis) {
-        return new StreamTask(userId, sessionId, "unknown", intervalMillis, false);
+        return new StreamTask(userId, sessionId, "unknown", intervalMillis, false, WsRouting.EMPTY);
     }
 
     /**
@@ -107,9 +160,18 @@ public abstract class StreamTaskHelper {
      */
     protected StreamTask startStreamTask(String userId, String sessionId, String aiType, long intervalMillis) {
         String at = (aiType != null && !aiType.isBlank()) ? aiType.trim() : "unknown";
-        return new StreamTask(userId, sessionId, at, intervalMillis, false);
+        return new StreamTask(userId, sessionId, at, intervalMillis, false, WsRouting.EMPTY);
     }
-    
+
+    /**
+     * 通用流式任务（从入站消息解析 sourceClientId/sourceType，用于同账号多 WebSocket 时精准回包）
+     * 与 startAiStreamTask(EngineMessage, ...) 保持对称。
+     */
+    protected StreamTask startStreamTask(EngineMessage message, String sessionId, long intervalMillis) {
+        String uid = message != null ? message.getUserId() : null;
+        return new StreamTask(uid, sessionId, "unknown", intervalMillis, false, parseRouting(message));
+    }
+
     // ==========================================================================
     // 🤖 AI业务流式任务（发送 AI_TASK_* 消息）
     // ==========================================================================
@@ -129,7 +191,15 @@ public abstract class StreamTaskHelper {
      * @return AI流式任务对象
      */
     protected StreamTask startAiStreamTask(String userId, String sessionId, String aiType, long intervalMillis) {
-        return new StreamTask(userId, sessionId, aiType, intervalMillis, true);
+        return new StreamTask(userId, sessionId, aiType, intervalMillis, true, WsRouting.EMPTY);
+    }
+
+    /**
+     * 同账号多 WebSocket 时使用：从入站消息解析 requestId/sourceClientId 并在 AI_TASK_* 回包中带回 Admin。
+     */
+    protected StreamTask startAiStreamTask(EngineMessage message, String sessionId, String aiType, long intervalMillis) {
+        String uid = message != null ? message.getUserId() : null;
+        return new StreamTask(uid, sessionId, aiType, intervalMillis, true, parseRouting(message));
     }
 
     /**
@@ -256,6 +326,7 @@ public abstract class StreamTaskHelper {
          */
         @Getter
         private final boolean isAiTask;  // 是否为AI任务（true=AI_TASK_*, false=TASK_*）
+        private final WsRouting wsRouting;
         private final long intervalMillis;
         private final AtomicInteger progressCount = new AtomicInteger(0);
         private final AtomicBoolean stopped = new AtomicBoolean(false);
@@ -271,12 +342,14 @@ public abstract class StreamTaskHelper {
          * @param intervalMillis 进度推送间隔（毫秒）
          * @param isAiTask 是否为AI任务（true=发送AI_TASK_*，false=发送TASK_*）
          */
-        public StreamTask(String userId, String sessionId, String aiType, long intervalMillis, boolean isAiTask) {
+        public StreamTask(String userId, String sessionId, String aiType, long intervalMillis, boolean isAiTask,
+                            WsRouting wsRouting) {
             this.userId = userId;
             this.sessionId = sessionId;
             this.aiType = aiType;
             this.intervalMillis = intervalMillis;
             this.isAiTask = isAiTask;
+            this.wsRouting = wsRouting != null ? wsRouting : WsRouting.EMPTY;
         }
 
         /**
@@ -323,7 +396,7 @@ public abstract class StreamTaskHelper {
          * @param message 进度消息
          */
         public void sendProgress(String message) {
-            StreamTaskHelper.this.sendProgress(userId, sessionId, aiType, message, 0, 0);
+            sendProgress(message, 0, 0);
         }
 
         /**
@@ -334,7 +407,21 @@ public abstract class StreamTaskHelper {
          * @param total 总步骤数
          */
         public void sendProgress(String message, int current, int total) {
-            StreamTaskHelper.this.sendProgress(userId, sessionId, aiType, message, current, total);
+            if (!isConnected()) {
+                return;
+            }
+            String messageType = isAiTask ? MessageType.AI_TASK_LOG.getCode() : MessageType.TASK_LOG.getCode();
+            EngineMessage.Builder builder = EngineMessage.builder()
+                .type(messageType)
+                .userId(userId)
+                .payload("sessionId", sessionId)
+                .payload("aiType", aiType)
+                .payload("message", message)
+                .payload("current", current)
+                .payload("total", total)
+                .payload("timestamp", System.currentTimeMillis());
+            applyWsRouting(builder, wsRouting);
+            StreamTaskHelper.this.webSocketClientManager.sendMessage(builder.build());
         }
 
         /**
@@ -360,6 +447,7 @@ public abstract class StreamTaskHelper {
                 .payload("aiType", aiType)         // AI类型
                 .payload("message", message)
                 .payload("timestamp", System.currentTimeMillis());
+            applyWsRouting(builder, wsRouting);
 
             StreamTaskHelper.this.webSocketClientManager.sendMessage(builder.build());
             log.debug("[StreamTask] 发送日志[{}] - 用户: {}, 会话: {}, 消息: {}", messageType, userId, sessionId, message);
@@ -388,6 +476,7 @@ public abstract class StreamTaskHelper {
                 .payload("aiType", aiType)         // AI类型
                 .payload("screenshotUrl", screenshotUrl)
                 .payload("timestamp", System.currentTimeMillis());
+            applyWsRouting(builder, wsRouting);
 
             StreamTaskHelper.this.webSocketClientManager.sendMessage(builder.build());
             log.debug("[StreamTask] 发送截图[{}] - 用户: {}, 会话: {}, URL: {}", messageType, userId, sessionId, screenshotUrl);
@@ -418,6 +507,7 @@ public abstract class StreamTaskHelper {
             if (extraData != null) {
                 extraData.forEach(builder::payload);
             }
+            applyWsRouting(builder, wsRouting);
 
             StreamTaskHelper.this.webSocketClientManager.sendMessage(builder.build());
         }
@@ -463,6 +553,7 @@ public abstract class StreamTaskHelper {
                     }
                 }
             }
+            applyWsRouting(builder, wsRouting);
 
             StreamTaskHelper.this.webSocketClientManager.sendMessage(builder.build());
             log.debug("[StreamTask] 发送成功[{}] - 用户: {}, 会话: {}", messageType, userId, sessionId);
@@ -486,7 +577,7 @@ public abstract class StreamTaskHelper {
             // 根据任务类型选择消息格式
             String messageType = isAiTask ? MessageType.AI_TASK_ERROR.getCode() : MessageType.TASK_RESULT.getCode();
             
-            EngineMessage errorMsg = EngineMessage.builder()
+            EngineMessage.Builder errB = EngineMessage.builder()
                 .type(messageType)
                 .userId(userId)
                 .payload("sessionId", sessionId)
@@ -494,8 +585,9 @@ public abstract class StreamTaskHelper {
                 .payload("success", false)
                 .payload("errorCode", "TASK_ERROR")
                 .payload("errorMessage", errorMessage)
-                .payload("timestamp", System.currentTimeMillis())
-                .build();
+                .payload("timestamp", System.currentTimeMillis());
+            applyWsRouting(errB, wsRouting);
+            EngineMessage errorMsg = errB.build();
 
             StreamTaskHelper.this.webSocketClientManager.sendMessage(errorMsg);
             log.error("[StreamTask] 发送错误[{}] - 用户: {}, 会话: {}, 错误: {}", messageType, userId, sessionId, errorMessage);

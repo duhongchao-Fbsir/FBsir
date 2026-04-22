@@ -50,13 +50,8 @@ if (-not $javaExe) {
     exit 1
 }
 
-$mvnExe = $null
-if (Get-Command mvn -ErrorAction SilentlyContinue) {
-    $mvnExe = 'mvn'
-} else {
-    $bundled = Join-Path $repoRoot '.tools\maven-extract\apache-maven-3.9.9\bin\mvn.cmd'
-    if (Test-Path $bundled) { $mvnExe = $bundled }
-}
+. (Join-Path $PSScriptRoot 'Resolve-Maven.ps1')
+$mvnExe = Get-MavenExecutable -RepoRoot $repoRoot
 
 $jarPath = $null
 if ($env:WXFBSIR_ADMIN_JAR -and (Test-Path -LiteralPath $env:WXFBSIR_ADMIN_JAR)) {

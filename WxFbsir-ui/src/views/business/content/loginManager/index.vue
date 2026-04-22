@@ -143,7 +143,8 @@ function parseIsLoggedInFromCheckData(data) {
 /** Engine TASK_RESULT：从 payload 推断服务 ID（兼容 aiType / platform / 请求类型） */
 function resolveServiceIdFromCheckLoginPayload(payload, messageType) {
   if (!payload || typeof payload !== 'object') return null
-  const raw = payload.aiType ?? payload.ai_type
+  // 兼容 aiType 在 payload 顶层 或嵌套在 payload.data 中
+  const raw = payload.aiType ?? payload.ai_type ?? payload.data?.aiType ?? payload.data?.ai_type
   if (raw != null && raw !== '') {
     const id = String(raw).trim().toLowerCase()
     if (id !== 'unknown') {
@@ -288,7 +289,7 @@ const handleWebSocketMessage = (message) => {
     let matchMethod = ''
     
     // 方式1: 通过 metadata.requestType 匹配（最可靠）
-    if (metadata.requestType) {
+    if (!serviceId && metadata.requestType) {
       serviceId = ENGINE_CONFIGS.find(config => 
         config.messageTypes?.checkLogin === metadata.requestType
       )?.id
@@ -513,6 +514,14 @@ const checkLoginStatus = (serviceId) => {
   if (!config) return
 
   checkingServices.value[serviceId] = true
+
+  // 60秒超时兜底，防止永久「检测中」
+  setTimeout(() => {
+    if (checkingServices.value[serviceId]) {
+      checkingServices.value[serviceId] = false
+      console.warn('⚠️ [登录管理器] 检测超时，已重置状态:', serviceId)
+    }
+  }, 60000)
 
   const hostId = userStore.hostId
   const message = {

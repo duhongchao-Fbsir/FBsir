@@ -774,7 +774,7 @@ const handleUploadKnowledge = async () => {
           }
         )
         // 用户点击确认，跳转到登录管理器页面
-        window.location.href = '/#/business/content/loginManager'
+        window.location.href = '/content/login-manager'
         return
       } catch (e) {
         // 用户点击取消
@@ -858,7 +858,7 @@ const handleSubmitUpload = async () => {
           }
         )
         // 用户点击确认，跳转到登录管理器页面
-        window.location.href = '/#/business/content/loginManager'
+        window.location.href = '/content/login-manager'
         return
       } catch (e) {
         // 用户点击取消

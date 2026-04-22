@@ -90,8 +90,9 @@ public class EngineMessageRouter {
         
         // 🔴 关键修复：根据请求来源区分响应目标
         // 提取 requestId 和 sourceType
-        String requestId = message.getPayloadValue("requestId");
-        String sourceType = message.getPayloadValue("sourceType");
+        String requestId = strPayload(message, "requestId");
+        String sourceType = strPayload(message, "sourceType");
+        String sourceClientId = strPayload(message, "sourceClientId");
         
         log.debug("[Router] 收到Engine响应: {} - 类型: {}, 用户: {}, 请求ID: {}", 
             session.getEngineId(), type, userId, requestId);
@@ -117,7 +118,7 @@ public class EngineMessageRouter {
                 // WebSocket 请求 → 仅转发给 WebSocket 客户端（完整转发payload）
                 if (userId != null && !userId.isEmpty()) {
                     String jsonMessage = message.toJson();
-                    clientMessageRouter.routeToClient(userId, jsonMessage);
+                    clientMessageRouter.routeToClient(userId, jsonMessage, sourceClientId);
                     log.debug("[Router] WebSocket响应已转发 - 请求ID: {}, 类型: {}", requestId, type);
                     return;
                 }
@@ -135,7 +136,7 @@ public class EngineMessageRouter {
                 // 尝试转发给 WebSocket
                 if (userId != null && !userId.isEmpty()) {
                     String jsonMessage = message.toJson();
-                    clientMessageRouter.routeToClient(userId, jsonMessage);
+                    clientMessageRouter.routeToClient(userId, jsonMessage, sourceClientId);
                 }
                 return;
             }
@@ -144,7 +145,7 @@ public class EngineMessageRouter {
         // 非 _RESULT 消息（进度消息等），正常转发给客户端
         if (userId != null && !userId.isEmpty()) {
             String jsonMessage = message.toJson();
-            clientMessageRouter.routeToClient(userId, jsonMessage);
+            clientMessageRouter.routeToClient(userId, jsonMessage, sourceClientId);
             log.debug("[Router] 转发进度消息: {} - 用户: {}", type, userId);
             return;
         }
@@ -172,8 +173,25 @@ public class EngineMessageRouter {
      */
     public void forwardToClient(String userId, String rawMessage) {
         if (userId != null && !userId.isEmpty()) {
-            clientMessageRouter.routeToClient(userId, rawMessage);
+            String scid = null;
+            try {
+                com.alibaba.fastjson2.JSONObject j = com.alibaba.fastjson2.JSON.parseObject(rawMessage);
+                if (j != null) {
+                    com.alibaba.fastjson2.JSONObject pay = j.getJSONObject("payload");
+                    if (pay != null) {
+                        Object o = pay.get("sourceClientId");
+                        scid = o != null ? o.toString() : null;
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+            clientMessageRouter.routeToClient(userId, rawMessage, scid);
         }
+    }
+
+    private static String strPayload(EngineMessage m, String key) {
+        Object v = m.getPayloadValue(key);
+        return v != null ? v.toString() : null;
     }
 
     // ==========================================================================
@@ -656,9 +674,6 @@ public class EngineMessageRouter {
             case "deepseek":
                 chatData.put("deepseekChatId", aiChatId);
                 break;
-            case "gitee":
-                chatData.put("giteeChatId", aiChatId);
-                break;
             case "yuanbao":
             case "元宝":
             case "腾讯元宝":
@@ -683,13 +698,6 @@ public class EngineMessageRouter {
                 break;
             case "kimi":
                 chatData.put("kimiChatId", aiChatId);
-                break;
-            case "metaso":
-            case "秘塔":
-            case "秘塔ai":
-            case "mita":
-            case "秘塔搜索":
-                chatData.put("metasoChatId", aiChatId);
                 break;
             case "minimax":
             case "max":

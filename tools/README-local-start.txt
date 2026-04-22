@@ -1,5 +1,17 @@
 本地启动 WxFbsir-admin 依赖 MySQL 8 与 Redis。
 
+Maven 可执行文件（mvn 不在 PATH 时）
+  脚本会通过 tools\Resolve-Maven.ps1 依次探测：PATH、MAVEN_HOME、WXFBSIR_MVN、仓库 .tools\maven-extract、build-tools、
+  用户目录下 apache-maven-*、Scoop/Chocolatey 浅层路径。
+  也可临时设置: set WXFBSIR_MVN=D:\path\to\mvn.cmd
+
+多 Engine 实例（不同 host-id / 第二 JVM）本地压测
+  1) MySQL 执行一次（幂等）: sql\update_20260421_ws_host_whitelist_engine_dev_002_幂等.sql
+  2) 第一实例：tools\start-stack.ps1 或现有 8081 + engine-dev-001
+  3) 第二实例：tools\start-second-engine.ps1（8082、engine-dev-002、独立 Playwright data-dir）
+  4) 并发烟测（两路不同 engineId）：tools\e2e-aigc-concurrent-multiengine.ps1
+  环境变量（单路烟测）：E2E_ENGINE_ID=engine-dev-002 可与 E2E_WS_SLOT 同用
+
 一、构建可执行 JAR（与常见「加载 jar 启动」方式一致）
   主节点 Admin（仓库根目录执行）:
     mvn -pl WxFbsir-admin -am package -DskipTests

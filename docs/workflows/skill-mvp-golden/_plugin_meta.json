@@ -1,0 +1,28 @@
+{
+  "id": "skill.mvp.golden",
+  "name": "skill-mvp-golden",
+  "version": "1.0.0",
+  "description": "MVP baseline for skill-to-workflow equivalence",
+  "scene_packs": {
+    "builtin": [
+      "mvp-basic"
+    ],
+    "available": [
+      "mvp-basic"
+    ]
+  },
+  "permissions": {
+    "bash": false
+  },
+  "capabilities": {
+    "local_disk_output": false,
+    "offline_mode": false
+  },
+  "keywords": [
+    "mvp",
+    "workflow",
+    "question",
+    "response"
+  ]
+}
+

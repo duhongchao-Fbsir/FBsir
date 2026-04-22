@@ -548,7 +548,7 @@ public class DeepSeekController extends StreamTaskHelper {
             userId, sessionId, mode, chatId, deepseekChatId != null ? deepseekChatId : "新会话");
         
         // 🤖 AI咨询业务使用AI流式任务（发送 AI_TASK_* 消息）
-        StreamTask task = startAiStreamTask(userId, sessionId, aiType, 6000);
+        StreamTask task = startAiStreamTask(message, sessionId, aiType, 6000);
         BrowserSession session = null;
         
         try {

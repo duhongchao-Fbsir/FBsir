@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.function.Consumer;
 
 /**
  * 豆包（Doubao）网页版自动化工具。
@@ -31,6 +32,7 @@ public class DoubaoUtil {
     public static final String DOUBAO_CHAT_HOME = "https://www.doubao.com/chat";
 
     private static final Pattern CHAT_ID_IN_PATH = Pattern.compile("doubao\\.com/chat/([^/?#]+)");
+    private static final long HUMAN_VERIFICATION_MAX_WAIT_MS = 180_000L;
 
     /**
      * 检测是否已登录。
@@ -421,6 +423,13 @@ public class DoubaoUtil {
      * 输入问题并等待模型回复（支持思考开关）。
      */
     public String sendMessageAndWaitResponse(Page page, String query, boolean enableDeepThinking) {
+        return sendMessageAndWaitResponse(page, query, enableDeepThinking, null);
+    }
+
+    /**
+     * 输入问题并等待模型回复（支持思考开关 + 人机验证状态回传）。
+     */
+    public String sendMessageAndWaitResponse(Page page, String query, boolean enableDeepThinking, Consumer<String> progressReporter) {
         if (query == null || query.trim().isEmpty()) {
             throw new IllegalArgumentException("问题不能为空");
         }
@@ -429,12 +438,21 @@ public class DoubaoUtil {
 
         toggleThinkingIfNeeded(page, enableDeepThinking);
 
+        if (isHumanVerificationBlocking(page)) {
+            reportHumanVerificationDetected(progressReporter, "发送前");
+            waitForHumanVerificationClear(page, HUMAN_VERIFICATION_MAX_WAIT_MS, progressReporter);
+            reportHumanVerificationPassed(progressReporter, "发送前");
+        }
+
         String q = query.trim();
         if (!fillAndSend(page, q)) {
+            if (isHumanVerificationBlocking(page)) {
+                throw new RuntimeException("HUMAN_VERIFICATION_STUCK: 豆包触发人机验证，消息发送被阻塞");
+            }
             throw new RuntimeException("未找到输入框或发送失败");
         }
 
-        return waitForAssistantReply(page, q);
+        return waitForAssistantReply(page, q, progressReporter);
     }
 
     /**
@@ -622,7 +640,7 @@ public class DoubaoUtil {
         return null;
     }
 
-    private String waitForAssistantReply(Page page, String userQuery) {
+    private String waitForAssistantReply(Page page, String userQuery, Consumer<String> progressReporter) {
         long start = System.currentTimeMillis();
         long maxWait = 300_000;
         String lastText = "";
@@ -638,6 +656,13 @@ public class DoubaoUtil {
             if (isGenerating(page)) {
                 stable = 0;
                 page.waitForTimeout(400);
+                continue;
+            }
+
+            if (isHumanVerificationBlocking(page)) {
+                reportHumanVerificationDetected(progressReporter, "回复阶段");
+                waitForHumanVerificationClear(page, HUMAN_VERIFICATION_MAX_WAIT_MS, progressReporter);
+                reportHumanVerificationPassed(progressReporter, "回复阶段");
                 continue;
             }
 
@@ -663,6 +688,87 @@ public class DoubaoUtil {
             return fallback.trim();
         }
         return "豆包超时未返回可读正文，请手动在浏览器中查看页面";
+    }
+
+    private void waitForHumanVerificationClear(Page page, long maxWaitMs, Consumer<String> progressReporter) {
+        long start = System.currentTimeMillis();
+        while (System.currentTimeMillis() - start < maxWaitMs) {
+            if (page.isClosed()) {
+                throw new RuntimeException("页面已关闭");
+            }
+            if (!isHumanVerificationBlocking(page)) {
+                return;
+            }
+            try {
+                page.waitForTimeout(1200);
+            } catch (Exception e) {
+                throw new RuntimeException("等待人机验证通过时发生异常: " + e.getMessage(), e);
+            }
+            long elapsed = (System.currentTimeMillis() - start) / 1000;
+            if (elapsed > 0 && elapsed % 15 == 0) {
+                safeReport(progressReporter, "豆包仍在等待人机验证完成（已等待 " + elapsed + " 秒）");
+            }
+        }
+        throw new RuntimeException("HUMAN_VERIFICATION_STUCK: 豆包人机验证长时间未通过，请人工完成后重试");
+    }
+
+    private void reportHumanVerificationDetected(Consumer<String> progressReporter, String phase) {
+        safeReport(progressReporter, "检测到豆包人机验证（" + phase + "），流程已暂停等待人工通过...");
+        log.warn("[Doubao] 检测到人机验证阻塞 - 阶段: {}", phase);
+    }
+
+    private void reportHumanVerificationPassed(Consumer<String> progressReporter, String phase) {
+        safeReport(progressReporter, "豆包人机验证已通过（" + phase + "），继续执行后续步骤");
+        log.info("[Doubao] 人机验证已通过 - 阶段: {}", phase);
+    }
+
+    private void safeReport(Consumer<String> progressReporter, String message) {
+        if (progressReporter == null || message == null || message.isBlank()) {
+            return;
+        }
+        try {
+            progressReporter.accept(message);
+        } catch (Exception ignore) {
+            // ignore
+        }
+    }
+
+    private boolean isHumanVerificationBlocking(Page page) {
+        try {
+            Object result = page.evaluate("""
+                () => {
+                  const body = (document.body && document.body.innerText) ? document.body.innerText : '';
+                  const keywordHit =
+                    body.includes('人机验证') ||
+                    body.includes('安全验证') ||
+                    body.includes('请完成验证') ||
+                    body.includes('拖动滑块') ||
+                    body.includes('验证后继续') ||
+                    body.includes('异常访问');
+                  const selectors = [
+                    'iframe[src*="captcha"]',
+                    'iframe[src*="verify"]',
+                    '[id*="captcha"]',
+                    '[class*="captcha"]',
+                    '[class*="Captcha"]',
+                    '[class*="verify"]',
+                    '[class*="Verify"]',
+                    '[class*="geetest"]'
+                  ];
+                  const hasWidget = selectors.some(sel => {
+                    const el = document.querySelector(sel);
+                    if (!el) return false;
+                    const r = el.getBoundingClientRect();
+                    const st = window.getComputedStyle(el);
+                    return r.width > 10 && r.height > 10 && st.display !== 'none' && st.visibility !== 'hidden';
+                  });
+                  return keywordHit || hasWidget;
+                }
+                """);
+            return Boolean.TRUE.equals(result);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private boolean isGenerating(Page page) {

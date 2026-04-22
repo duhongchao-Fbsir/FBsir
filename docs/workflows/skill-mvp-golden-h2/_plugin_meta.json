@@ -1,0 +1,18 @@
+{
+  "id": "skill.mvp.golden.h2",
+  "name": "skill-mvp-golden-h2",
+  "version": "1.0.0",
+  "description": "Second scene-pack (branch) for H2 equivalence baseline",
+  "scene_packs": {
+    "builtin": ["mvp-branch"],
+    "available": ["mvp-branch"]
+  },
+  "permissions": {
+    "bash": false
+  },
+  "capabilities": {
+    "local_disk_output": false,
+    "offline_mode": false
+  },
+  "keywords": ["mvp", "workflow", "branch", "h2"]
+}

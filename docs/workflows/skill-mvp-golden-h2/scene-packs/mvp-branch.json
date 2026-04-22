@@ -1,0 +1,40 @@
+{
+  "id": "mvp-branch",
+  "title": "MVP Branch Flow (H2 linear baseline)",
+  "stages": [
+    { "id": "s_in", "name": "输入" },
+    { "id": "s_proc", "name": "处理" },
+    { "id": "s_out", "name": "输出" }
+  ],
+  "variables": [
+    { "key": "question", "type": "string" },
+    { "key": "response", "type": "string" },
+    { "key": "traceId", "type": "string" }
+  ],
+  "steps": [
+    {
+      "id": "receive_input",
+      "title": "接收问题变量",
+      "type": "input",
+      "instruction": "写入 question",
+      "next": "generate_answer"
+    },
+    {
+      "id": "generate_answer",
+      "title": "大模型生成回答",
+      "type": "llm",
+      "prompt": "基于 question 生成 response",
+      "next": "emit_output"
+    },
+    {
+      "id": "emit_output",
+      "title": "返回结果",
+      "type": "output",
+      "description": "输出 response 与 traceId"
+    }
+  ],
+  "edges": [
+    { "from": "receive_input", "to": "generate_answer" },
+    { "from": "generate_answer", "to": "emit_output" }
+  ]
+}

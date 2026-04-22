@@ -9,7 +9,8 @@ import {
 } from '../src/utils/aiCapabilityMapper.js'
 import { ENGINE_CONFIGS, SERVICE_TYPE } from '../src/config/engineConfig.js'
 
-const SHELVED = ['deepseek', 'gitee', 'doubao', 'qianwen', 'yuanbao', 'mita']
+// Must match ENGINE_CONFIGS entries with type === AI and Object.keys(AI_CAPABILITY_MATRIX) (current product shelf)
+const SHELVED = ['deepseek', 'doubao', 'qianwen', 'yuanbao']
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg || 'assertion failed')

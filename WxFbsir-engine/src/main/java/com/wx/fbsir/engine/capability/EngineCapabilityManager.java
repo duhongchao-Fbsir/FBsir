@@ -118,68 +118,84 @@ public class EngineCapabilityManager {
         if (webSocketClientManager == null || !webSocketClientManager.isConnected()) {
             return;
         }
-
-        EngineMessage response = EngineMessage.builder()
+        EngineMessage.Builder b = EngineMessage.builder()
             .type(MessageType.TASK_RESULT.getCode())
             .userId(message.getUserId())
-            .payload("requestId", message.getPayloadValue("requestId"))
             .payload("success", false)
             .payload("errorCode", "HANDLER_NOT_FOUND")
-            .payload("errorMessage", "当前主机没有 [" + type + "] 消息处理能力，需要更新主机或联系管理员处理")
-            .build();
-
-        webSocketClientManager.sendMessage(response);
+            .payload("errorMessage", "当前主机没有 [" + type + "] 消息处理能力，需要更新主机或联系管理员处理");
+        applyTopLevelRouting(b, message);
+        webSocketClientManager.sendMessage(b.build());
     }
 
     private void sendErrorResult(EngineMessage message, String type, String errorMsg) {
         if (webSocketClientManager == null || !webSocketClientManager.isConnected()) {
             return;
         }
-
-        EngineMessage response = EngineMessage.builder()
+        EngineMessage.Builder b = EngineMessage.builder()
             .type(MessageType.TASK_RESULT.getCode())
             .userId(message.getUserId())
-            .payload("requestId", message.getPayloadValue("requestId"))
             .payload("success", false)
             .payload("errorCode", "EXECUTION_ERROR")
-            .payload("errorMessage", "处理 [" + type + "] 时发生错误: " + errorMsg)
-            .build();
-
-        webSocketClientManager.sendMessage(response);
+            .payload("errorMessage", "处理 [" + type + "] 时发生错误: " + errorMsg);
+        applyTopLevelRouting(b, message);
+        webSocketClientManager.sendMessage(b.build());
     }
 
     private void sendBusyError(EngineMessage message, String type) {
         if (webSocketClientManager == null || !webSocketClientManager.isConnected()) {
             return;
         }
-
-        EngineMessage response = EngineMessage.builder()
+        EngineMessage.Builder b = EngineMessage.builder()
             .type(MessageType.TASK_RESULT.getCode())
             .userId(message.getUserId())
-            .payload("requestId", message.getPayloadValue("requestId"))
             .payload("success", false)
             .payload("errorCode", "SYSTEM_BUSY")
-            .payload("errorMessage", "系统繁忙，请稍后再试。当前任务队列已满，建议等待1-2分钟后重新尝试。")
-            .build();
-
-        webSocketClientManager.sendMessage(response);
+            .payload("errorMessage", "系统繁忙，请稍后再试。当前任务队列已满，建议等待1-2分钟后重新尝试。");
+        applyTopLevelRouting(b, message);
+        webSocketClientManager.sendMessage(b.build());
     }
 
     private void sendTaskRejectedError(EngineMessage message, String type, String errorCode, String errorMessage) {
         if (webSocketClientManager == null || !webSocketClientManager.isConnected()) {
             return;
         }
-
-        EngineMessage response = EngineMessage.builder()
+        EngineMessage.Builder b = EngineMessage.builder()
             .type(MessageType.TASK_RESULT.getCode())
             .userId(message.getUserId())
-            .payload("requestId", message.getPayloadValue("requestId"))
             .payload("success", false)
             .payload("errorCode", errorCode)
-            .payload("errorMessage", errorMessage)
-            .build();
+            .payload("errorMessage", errorMessage);
+        applyTopLevelRouting(b, message);
+        webSocketClientManager.sendMessage(b.build());
+    }
 
-        webSocketClientManager.sendMessage(response);
+    /**
+     * 从 rawJson 提取 requestId/sourceType/sourceClientId 并注入回包 payload。
+     * Admin HTTP 请求把这些字段放在 JSON 的 payload 内（非顶层），需与顶层兼读。
+     */
+    private static void applyTopLevelRouting(EngineMessage.Builder builder, EngineMessage message) {
+        try {
+            String raw = message.getRawJson();
+            if (raw == null || raw.isBlank()) return;
+            com.alibaba.fastjson2.JSONObject root = com.alibaba.fastjson2.JSON.parseObject(raw);
+            if (root == null) return;
+            com.alibaba.fastjson2.JSONObject pay = root.getJSONObject("payload");
+            String requestId = firstNonBlank(root.getString("requestId"), pay != null ? pay.getString("requestId") : null);
+            String sourceType = firstNonBlank(root.getString("sourceType"), pay != null ? pay.getString("sourceType") : null);
+            String sourceClientId = firstNonBlank(
+                root.getString("sourceClientId"), pay != null ? pay.getString("sourceClientId") : null);
+            if (requestId     != null) builder.payload("requestId",     requestId);
+            if (sourceType    != null) builder.payload("sourceType",    sourceType);
+            if (sourceClientId != null) builder.payload("sourceClientId", sourceClientId);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static String firstNonBlank(String a, String b) {
+        if (a != null && !a.isBlank()) return a;
+        if (b != null && !b.isBlank()) return b;
+        return null;
     }
 
     public List<Map<String, Object>> getCapabilityList() {

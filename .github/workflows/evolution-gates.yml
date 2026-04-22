@@ -1,0 +1,46 @@
+# 需在自建 Windows Runner 上预先启动 WxFbsir-admin + Engine（8080/8081）并完成企微扫码；
+# GitHub 托管 Runner 无法访问本机自动化环境，请勿改用 ubuntu/windows-latest 代替 self-hosted。
+name: evolution-gates
+
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: regression tier (see docs/workflows/skill-evolution-roadmap.md §6.7.1)
+        required: true
+        default: smoke
+        type: choice
+        options:
+          - smoke
+          - standard
+          - heavy
+      skip_restart:
+        description: pass true to use -SkipRestart on full-regression.ps1
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  gates:
+    runs-on: self-hosted
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Full regression
+        working-directory: ${{ github.workspace }}
+        run: |
+          $tier = '${{ inputs.tier }}'
+          $args = @(
+            '-ExecutionPolicy', 'Bypass',
+            '-NoProfile',
+            '-File', 'tools/full-regression.ps1',
+            '-Tier', $tier
+          )
+          if ('${{ inputs.skip_restart }}' -eq 'true') {
+            $args += '-SkipRestart'
+          }
+          & powershell.exe @args
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

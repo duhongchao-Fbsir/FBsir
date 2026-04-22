@@ -107,6 +107,7 @@ public class YuanQiLoginController extends StreamTaskHelper {
             resultData.put("isLoggedIn", isLoggedIn);
             resultData.put("userName", isLoggedIn ? loginStatus : null);
             resultData.put("platform", "YuanQi");
+            resultData.put("aiType", "yuanqi");
             resultData.put("timestamp", System.currentTimeMillis());
             
             // 发送结果

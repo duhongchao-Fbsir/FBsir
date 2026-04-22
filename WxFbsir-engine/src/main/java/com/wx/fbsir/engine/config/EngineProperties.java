@@ -48,6 +48,11 @@ public class EngineProperties {
      * 重连配置
      */
     private ReconnectConfig reconnect = new ReconnectConfig();
+
+    /**
+     * 企微工作流自动化（Playwright）附加配置
+     */
+    private QyWeixinConfig qyweixin = new QyWeixinConfig();
     
     // ========== Getters and Setters ==========
     
@@ -89,6 +94,68 @@ public class EngineProperties {
     
     public void setReconnect(ReconnectConfig reconnect) {
         this.reconnect = reconnect;
+    }
+
+    public QyWeixinConfig getQyweixin() {
+        return qyweixin;
+    }
+
+    public void setQyweixin(QyWeixinConfig qyweixin) {
+        this.qyweixin = qyweixin;
+    }
+
+    /**
+     * 企微工作流：结果落盘（JSON Lines），便于排查录屏与 HTTP 结果
+     */
+    public static class QyWeixinConfig {
+
+        /** 是否将企微工作流执行结果追加写入 JSON Lines 日志文件 */
+        private boolean automationLogEnabled = true;
+
+        /** 相对 Engine 工作目录或绝对路径 */
+        private String automationLogFile = "logs/qyweixin-automation.jsonl";
+
+        /**
+         * 克隆过程中是否启用菜单/面板的增量学习（写入 {@link #cloneLearningFile}）
+         */
+        private boolean cloneLearningEnabled = true;
+
+        /**
+         * 克隆记忆文件（JSON）：签名 -> 菜单文案票数，用于无法穷举分支样式时的统计纠偏
+         */
+        private String cloneLearningFile = "logs/qywx-clone-learning.json";
+
+        public boolean isAutomationLogEnabled() {
+            return automationLogEnabled;
+        }
+
+        public void setAutomationLogEnabled(boolean automationLogEnabled) {
+            this.automationLogEnabled = automationLogEnabled;
+        }
+
+        public String getAutomationLogFile() {
+            return automationLogFile;
+        }
+
+        public void setAutomationLogFile(String automationLogFile) {
+            this.automationLogFile = automationLogFile;
+        }
+
+        public boolean isCloneLearningEnabled() {
+            return cloneLearningEnabled;
+        }
+
+        public void setCloneLearningEnabled(boolean cloneLearningEnabled) {
+            this.cloneLearningEnabled = cloneLearningEnabled;
+        }
+
+        public String getCloneLearningFile() {
+            return cloneLearningFile;
+        }
+
+        public void setCloneLearningFile(String cloneLearningFile) {
+            this.cloneLearningFile = cloneLearningFile;
+        }
     }
 
     /**
