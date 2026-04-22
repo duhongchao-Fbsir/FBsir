@@ -1,0 +1,8 @@
+{
+  "packs": {
+    "longform-main": {
+      "title": "长文主链路",
+      "entry": "scene-packs/longform-main.json"
+    }
+  }
+}

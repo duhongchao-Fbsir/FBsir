@@ -112,7 +112,7 @@ function Invoke-OneSmokeRun {
     }
 
     $aiResults = @()
-    $aiLinePattern = "^(deepseek|doubao|qianwen|yuanbao|mita|gitee)\s+([0-9a-fA-F-]+)\s+(RESULT_OK|RESULT_FAIL|TASK_ERROR|TIMEOUT|WS_FAIL)\s*(.*)$"
+    $aiLinePattern = "^(deepseek|doubao|qianwen|yuanbao)\s+([0-9a-fA-F-]+)\s+(RESULT_OK|RESULT_FAIL|TASK_ERROR|TIMEOUT|WS_FAIL)\s*(.*)$"
     foreach ($line in $lines) {
         $m = [regex]::Match($line.Trim(), $aiLinePattern)
         if (-not $m.Success) {

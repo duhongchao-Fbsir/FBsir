@@ -1,0 +1,10 @@
+{
+  "sheets": {
+    "init": {
+      "columns": [
+        { "name": "question", "type": "string" },
+        { "name": "traceSeed", "type": "string" }
+      ]
+    }
+  }
+}

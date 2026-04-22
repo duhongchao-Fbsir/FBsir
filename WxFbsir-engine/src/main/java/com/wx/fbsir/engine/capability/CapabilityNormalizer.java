@@ -19,9 +19,6 @@ public final class CapabilityNormalizer {
     private static final Set<String> DEEPSEEK_OPTION_IDS = Set.of(
         "enableDeepThinking", "enableWebSearch", "enableFileUpload", "enableFastMode", "enableExpertMode"
     );
-    private static final Set<String> GITEE_OPTION_IDS = Set.of(
-        "openSourceExploration", "repositoryQA", "helpCenter", "enableFileUpload"
-    );
     private static final Set<String> DOUBAO_OPTION_IDS = Set.of(
         "enableDeepThinking", "enableFastMode", "enableExpertMode", "enableFileUpload"
     );
@@ -114,12 +111,6 @@ public final class CapabilityNormalizer {
                     break;
             }
         }
-        if ("gitee".equals(normalizedAiType) && conversationProfile != null && !conversationProfile.isBlank()) {
-            openSourceExploration = "openSourceExploration".equals(conversationProfile);
-            repositoryQa = "repositoryQA".equals(conversationProfile);
-            helpCenter = "helpCenter".equals(conversationProfile);
-        }
-
         if (fastMode && expertMode) {
             fastMode = false;
         }
@@ -175,8 +166,6 @@ public final class CapabilityNormalizer {
             supported = DEEPSEEK_OPTION_IDS;
         } else if ("doubao".equals(aiType)) {
             supported = DOUBAO_OPTION_IDS;
-        } else if ("gitee".equals(aiType)) {
-            supported = GITEE_OPTION_IDS;
         } else {
             supported = FILE_ONLY_OPTION_IDS;
         }

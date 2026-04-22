@@ -1,0 +1,8 @@
+{
+  "packs": {
+    "mvp-branch": {
+      "title": "MVP Branch",
+      "entry": "scene-packs/mvp-branch.json"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "engineId": "engine-dev-001",
+  "type": "QYWEIXIN_WORKFLOW_DELETE",
+  "userId": "1",
+  "timeout": 120,
+  "payload": {
+    "workflowName": "协会AI秘书工作流"
+  }
+}

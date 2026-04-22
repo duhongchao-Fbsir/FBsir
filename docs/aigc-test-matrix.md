@@ -1,20 +1,20 @@
 # AIGC Full Regression Matrix
 
-This document defines a risk-oriented test matrix for the 7 AI platforms:
+This document defines a risk-oriented test matrix for the **four browser-based AIGC platforms** currently on the shelf (aligned with `WxFbsir-ui/src/config/engineConfig.js`):
 
 - deepseek
 - doubao
 - qianwen
 - yuanbao
-- wenxin
-- mita
-- gitee
+
+> **Removed from AIGC shelf (Engine handlers deleted; Admin still rejects legacy message types):** Gitee AI Chat (`GITEE_*` / `AI_GITEE_*`), Mita / 秘塔 (`MITA_*` / `AI_MITA_*`).  
+> **Gitee OAuth / profile / analysis** remains a separate business module (`business/gitee/*`), not the same as `gitee-ai-chat`.
 
 ## 1) Release Gates
 
 ### P0 (must pass before merge/release)
 
-- 7-platform full smoke query success rate
+- 4-platform full smoke query success rate (`RESULT_OK=4/4` for default `e2e-aigc-smoke` subset)
 - Login detection correctness
 - Payload integrity (`sessionId`, `chatId`, `query`, `userPrompt`)
 - Result message integrity (`AI_TASK_RESULT` or `AI_TASK_ERROR`)
@@ -26,7 +26,7 @@ This document defines a risk-oriented test matrix for the 7 AI platforms:
 - UI selector fallback paths
 - Timeout boundary behavior
 - Anti-noise login judgment (irrelevant hints/modals)
-- Error observability (`ai`, `sessionId`, stage, category)
+- Error observability (`ai`, `sessionId`, `stage`, `category`)
 
 ### P2 (weekly stability)
 
@@ -37,22 +37,22 @@ This document defines a risk-oriented test matrix for the 7 AI platforms:
 
 ## 2) Platform x Risk Matrix
 
-| Risk Dimension | DeepSeek | Doubao | Qianwen | Yuanbao | Wenxin | Mita | Gitee |
-|---|---|---|---|---|---|---|---|
-| login check accuracy | required | required | required | required | required | required | required |
-| login persistence after restart | required | required | required | required | required | required | required |
-| anti-noise login judgment | required | required | required | required | required | required | required |
-| payload field integrity | required | required | required | required | required | required | required |
-| response extraction stability | required | required | required | required | required | required | required |
-| timeout/degrade behavior | required | required | required | required | required | required | required |
-| mode toggle behavior | optional | optional | optional | optional | optional | optional | required |
-| upload passthrough behavior | optional | optional | optional | optional | optional | optional | required |
+| Risk Dimension | DeepSeek | Doubao | Qianwen | Yuanbao |
+|---|---|---|---|---|
+| login check accuracy | required | required | required | required |
+| login persistence after restart | required | required | required | required |
+| anti-noise login judgment | required | required | required | required |
+| payload field integrity | required | required | required | required |
+| response extraction stability | required | required | required | required |
+| timeout/degrade behavior | required | required | required | required |
+| mode toggle behavior | optional | optional | — | — |
+| upload passthrough behavior | optional | optional | optional | optional |
 
 ## 3) Test Case Catalog
 
 ### P0 Cases
 
-- `TC-P0-01`: Full 7-platform smoke run, target `RESULT_OK=7/7`.
+- `TC-P0-01`: Full 4-platform smoke run, target `RESULT_OK=4/4` (see `tools/e2e-aigc-smoke.ps1`).
 - `TC-P0-02`: Verify top-level and nested payload fields are consistent.
 - `TC-P0-03`: Verify login manager all-green is reflected by `CHECK_LOGIN`.
 - `TC-P0-04`: Verify noisy UI hints do not force false login failure.
@@ -65,7 +65,6 @@ This document defines a risk-oriented test matrix for the 7 AI platforms:
 - `TC-P1-02`: Input/send selector fallback works under UI variants.
 - `TC-P1-03`: WebSocket fragmented frame parsing remains stable.
 - `TC-P1-04`: Failure logs include `ai + sessionId + stage + reason`.
-- `TC-P1-05`: Gitee mode switch and repository dialog paths.
 
 ### P2 Cases
 
@@ -76,11 +75,9 @@ This document defines a risk-oriented test matrix for the 7 AI platforms:
 
 ## 4) Execution Script
 
-Use `tools/e2e-aigc-regression.ps1`:
+Use `tools/e2e-aigc-regression.ps1` if present in your branch, or `tools/e2e-aigc-smoke.ps1` for a smaller matrix:
 
-- `-Tier P0` for release gate.
-- `-Tier P1` for daily baseline.
-- `-Tier P2` for weekly/stability run.
+- `-Tier P0` for release gate (when regression script supports tiers).
 - Outputs:
   - plain logs: `tools/out/*.log`
   - structured json: `tools/out/*.json`
@@ -88,13 +85,11 @@ Use `tools/e2e-aigc-regression.ps1`:
 
 ## 5) Naming Boundary
 
-- `gitee-ai-chat` means the AI chat platform integrated in AIGC flow.
-- `gitee-oauth` means account binding/login for system account integration.
-- Any regression case or issue must include this boundary label to avoid routing to wrong module.
+- **`gitee-oauth` / `business/gitee`** — account binding, profile, usage reports, analysis; **not** AIGC browser chat.
+- **Legacy type names** `AI_GITEE_*`, `GITEE_*`, `AI_MITA_*`, `MITA_*` — still blocked on Admin with `SERVICE_OFF_SHELF` / task error; do not file under OAuth module.
 
 ## 6) Pass Criteria
 
 - P0: all required checks pass; full smoke no critical mismatch.
 - P1: no new regression and no repeated false login judgments.
 - P2: stable trend, no persistent infra-level failure pattern.
-

@@ -65,7 +65,7 @@
 | [全局一致性对齐说明.md](全局一致性对齐说明.md) | 品牌、模块、版本、配置键、源码托管、**§2.3 AI 关联域** |
 | [架构与规范/AI助手关联域全局洞察与一致性升级.md](架构与规范/AI助手关联域全局洞察与一致性升级.md) | 能力对齐、产出物、日志、OpenAPI、复用规范 |
 | [运行维护/AIGC对话数据流审计与修复建议.md](运行维护/AIGC对话数据流审计与修复建议.md) | 输入→持久化→Engine→回写 全链路问题与修复顺序 |
-| [aigc-test-matrix.md](aigc-test-matrix.md) | Gitee AI Chat vs OAuth 等场景边界 |
+| [aigc-test-matrix.md](aigc-test-matrix.md) | AIGC 四平台上架矩阵；`gitee-oauth`（OAuth 业务）与已下架的 Gitee AI Chat（浏览器对话）区分 |
 | [docs/README.md](README.md) | 文档中心导航 |
 | [../tools/pr-submit-aigc.md](../tools/pr-submit-aigc.md) | PR 描述与推送说明 |
 | [../sql/MIGRATION_ORDER.txt](../sql/MIGRATION_ORDER.txt) | 数据库迁移顺序（若涉及） |

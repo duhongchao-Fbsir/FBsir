@@ -139,20 +139,6 @@ public class AigcServiceImpl implements IAigcService {
         ));
         aiList.add(deepSeek);
 
-        Map<String, Object> giteeAi = new HashMap<>();
-        giteeAi.put("id", "gitee");
-        giteeAi.put("name", "Gitee AI Chat");
-        giteeAi.put("description", "Gitee AI Chat 智能助手");
-        giteeAi.put("avatar", "https://gitee.com/favicon.ico");
-        giteeAi.put("onlineStatus", true);
-        giteeAi.put("features", List.of("开源探索", "仓库问答", "帮助中心"));
-        giteeAi.put("types", List.of(
-            "GITEE_CHECK_LOGIN",
-            "GITEE_SCAN_LOGIN",
-            "AI_GITEE_QUERY"
-        ));
-        aiList.add(giteeAi);
-
         Map<String, Object> doubaoAi = new HashMap<>();
         doubaoAi.put("id", "doubao");
         doubaoAi.put("name", "豆包");
@@ -194,20 +180,6 @@ public class AigcServiceImpl implements IAigcService {
             "AI_YUANBAO_QUERY"
         ));
         aiList.add(yuanbaoAi);
-
-        Map<String, Object> mitaAi = new HashMap<>();
-        mitaAi.put("id", "mita");
-        mitaAi.put("name", "秘塔");
-        mitaAi.put("description", "秘塔 AI 搜索网页版");
-        mitaAi.put("avatar", "https://metaso.cn/favicon.ico");
-        mitaAi.put("onlineStatus", true);
-        mitaAi.put("features", List.of("多轮对话", "网页自动化"));
-        mitaAi.put("types", List.of(
-            "MITA_CHECK_LOGIN",
-            "MITA_SCAN_LOGIN",
-            "AI_MITA_QUERY"
-        ));
-        aiList.add(mitaAi);
 
         return aiList;
     }

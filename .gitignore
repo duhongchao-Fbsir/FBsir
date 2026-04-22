@@ -241,6 +241,13 @@ test-results/
 ######################################################################
 # Local tooling (not versioned)
 tools/out/
+# 与 tools/out 并列的本地跑批/e2e 产物目录（如 out-concurrent-*）
+tools/out-*/
+# 本地探测截图与一次性 JSON 输出
+tools/aihelper-*.png
+tools/*-result.json
+tools/aihelper-research.json
+tools/_tmp_*.sql
 build-tools/
 
 ######################################################################

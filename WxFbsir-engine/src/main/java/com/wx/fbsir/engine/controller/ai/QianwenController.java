@@ -228,7 +228,7 @@ public class QianwenController extends StreamTaskHelper {
         boolean enableFileUpload = normalized.isFileUploadEnabled();
         String uploadedFileUrl = normalized.getFileUploadUrl();
 
-        StreamTask task = startAiStreamTask(userId, sessionId, aiType, 6000);
+        StreamTask task = startAiStreamTask(message, sessionId, aiType, 6000);
         BrowserSession session = null;
 
         try {

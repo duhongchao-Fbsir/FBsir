@@ -347,6 +347,22 @@ public class EngineWebSocketHandler extends TextWebSocketHandler {
         if (engineSession != null) {
             // 更新心跳时间
             engineSession.updateHeartbeatTime();
+
+            // Engine 在心跳中附带最新能力列表时，刷新 Admin 侧白名单（与首包 ENGINE_REGISTER 对齐，避免长连接下能力集不更新）
+            Object capabilitiesObj = message.getPayloadValue("capabilities");
+            if (capabilitiesObj instanceof java.util.List<?> rawList && !rawList.isEmpty()) {
+                java.util.List<java.util.Map<String, Object>> capabilities = new java.util.ArrayList<>();
+                for (Object item : rawList) {
+                    if (item instanceof java.util.Map<?, ?> mapItem) {
+                        java.util.Map<String, Object> cap = new java.util.HashMap<>();
+                        mapItem.forEach((k, v) -> cap.put(String.valueOf(k), v));
+                        capabilities.add(cap);
+                    }
+                }
+                if (!capabilities.isEmpty()) {
+                    engineSession.setCapabilities(capabilities);
+                }
+            }
             
             // 检查是否携带性能数据（每5分钟更新一次）
             Object performanceData = message.getPayloadValue("performance");

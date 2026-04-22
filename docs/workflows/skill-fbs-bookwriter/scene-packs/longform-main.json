@@ -1,0 +1,61 @@
+{
+  "id": "longform-main",
+  "title": "福帮手写书 · 主链路",
+  "stages": [
+    { "id": "s_intake", "name": "输入与参数" },
+    { "id": "s_outline", "name": "大纲生成" },
+    { "id": "s_write", "name": "章节写作" },
+    { "id": "s_quality", "name": "质量门禁" },
+    { "id": "s_delivery", "name": "导出交付" }
+  ],
+  "variables": [
+    { "key": "genre", "type": "string" },
+    { "key": "outlineTarget", "type": "string" },
+    { "key": "outlineMd", "type": "string" },
+    { "key": "chapterDraft", "type": "string" },
+    { "key": "qualityReport", "type": "string" },
+    { "key": "traceId", "type": "string" }
+  ],
+  "steps": [
+    {
+      "id": "receive_brief",
+      "title": "接收写作参数",
+      "type": "input",
+      "instruction": "采集 genre、outlineTarget 与用户补充说明",
+      "next": "outline_generate"
+    },
+    {
+      "id": "outline_generate",
+      "title": "生成大纲",
+      "type": "llm",
+      "prompt": "根据题材与目标生成章节级大纲 outlineMd",
+      "next": "chapter_compose"
+    },
+    {
+      "id": "chapter_compose",
+      "title": "章节正文写作",
+      "type": "llm",
+      "prompt": "按大纲生成 chapterDraft",
+      "next": "quality_gate"
+    },
+    {
+      "id": "quality_gate",
+      "title": "质量检查与修订",
+      "type": "check",
+      "instruction": "校对、风格与事实一致性提示，输出 qualityReport",
+      "next": "export_deliver"
+    },
+    {
+      "id": "export_deliver",
+      "title": "导出交付物",
+      "type": "output",
+      "description": "汇总交付目录并输出 traceId"
+    }
+  ],
+  "edges": [
+    { "from": "receive_brief", "to": "outline_generate" },
+    { "from": "outline_generate", "to": "chapter_compose" },
+    { "from": "chapter_compose", "to": "quality_gate" },
+    { "from": "quality_gate", "to": "export_deliver" }
+  ]
+}

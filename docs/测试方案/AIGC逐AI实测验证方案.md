@@ -1,7 +1,8 @@
 # AIGC 逐 AI 实测验证方案（严格版）
 
 > **文档性质**：可执行测试方案 + 记录表模板，用于人工/半自动逐 AI 回归。  
-> **覆盖范围**：当前 AIGC 对话菜单中已上架的 7 个 AI（见下表）。  
+> **覆盖范围**：当前 AIGC 对话菜单中**已上架的 4 个 AI**（与 `engineConfig.js` 中 `SERVICE_TYPE.AI` 一致）：DeepSeek、豆包、千问、腾讯元宝。  
+> **已下架（勿再纳入验收）**：Gitee AI Chat、秘塔（Mita）— Engine 侧控制器已移除；Admin 仍会拦截对应消息类型并返回下架说明。  
 > **非目标**：不替代 Playwright 端到端自动化套件；浏览器/UI 以人工实测与 Engine 真机为主。
 
 ---
@@ -18,7 +19,7 @@
 | **可观测性** | 任务流程 / 截图 / 日志 | 任务流卡片可见；Admin `sys-info` 中 `[AIGC入站]` 含 `errorMessage=`（失败时） |
 | **落库完整性** | `wc_chat_history` 等 | `userPrompt` 非空（或从历史回填）；失败时 `results` 中含错误文案 |
 
-**整体验收**：每个 AI 至少完成「登录 + 单轮 + 续聊」三类用例；文件与多选项按矩阵选测。
+**整体验收**：每个已上架 AI 至少完成「登录 + 单轮 + 续聊」三类用例；文件与多选项按矩阵选测。
 
 ---
 
@@ -41,9 +42,6 @@
 | 豆包 | `DOUBAO_CHECK_LOGIN` | `DOUBAO_SCAN_LOGIN` | `AI_DOUBAO_QUERY` | `dbChatId` |
 | 千问 | `QIANWEN_CHECK_LOGIN` | `QIANWEN_SCAN_LOGIN` | `AI_QIANWEN_QUERY` | `toneChatId` |
 | 元宝 | `YUANBAO_CHECK_LOGIN` | `YUANBAO_SCAN_LOGIN` | `AI_YUANBAO_QUERY` | `ybChatId` |
-| 文心 | `WENXIN_CHECK_LOGIN` | `WENXIN_SCAN_LOGIN` | `AI_WENXIN_QUERY` | `baiduChatId` |
-| 秘塔 | `MITA_CHECK_LOGIN` | `MITA_SCAN_LOGIN` | `AI_MITA_QUERY` | `metasoChatId` |
-| Gitee | `GITEE_CHECK_LOGIN` | `GITEE_SCAN_LOGIN` | `AI_GITEE_QUERY` | `giteeChatId` |
 
 配置源：`WxFbsir-ui/src/config/engineConfig.js`。
 
@@ -54,7 +52,7 @@
 用于**协议与映射层**回归，不启动浏览器。
 
 ```bash
-# Engine：能力规约、秘塔 URL 解析等
+# Engine：能力规约等
 mvn -f WxFbsir-engine/pom.xml test
 
 # 前端：能力矩阵与 buildCompatibleAiPayload
@@ -67,7 +65,7 @@ cd WxFbsir-ui && npm run test:aigc-mapper
 
 ## 五、逐 AI 实测用例矩阵（严格执行顺序）
 
-对**每一个** AI，按 **A → B → C → D** 顺序执行；任一步失败则记录缺陷并暂停该 AI 后续步骤，修复后重测。
+对**每一个**已上架 AI，按 **A → B → C → D** 顺序执行；任一步失败则记录缺陷并暂停该 AI 后续步骤，修复后重测。
 
 ### 通用步骤模板
 
@@ -120,40 +118,12 @@ cd WxFbsir-ui && npm run test:aigc-mapper
 
 ---
 
-### 5.5 文心一言（Wenxin）
-
-| 用例 ID | 内容 | 通过判据 |
-|---------|------|----------|
-| WX-1 | 单轮/续聊 | `baiduChatId` 一致；结果看板含截图字段（若实现） |
-| WX-2 | 上传文件 ON | 同上千问 |
-
----
-
-### 5.6 秘塔（Mita）
-
-| 用例 ID | 内容 | 通过判据 |
-|---------|------|----------|
-| MT-1 | 单轮/续聊 | `metasoChatId` 为 URL 路径片段；**无错误 hash 片段** |
-| MT-2 | 上传文件 ON | 同上千问 |
-
----
-
-### 5.7 Gitee AI Chat
-
-| 用例 ID | 内容 | 通过判据 |
-|---------|------|----------|
-| GT-1 | 开源探索 / 仓库问答 / 帮助中心 **三选一** | 模式与页面一致 |
-| GT-2 | 上传文件 ON | 与模式无冲突或日志说明 |
-| GT-3 | 续聊 | `giteeChatId` 仅用 Gitee 自身 id，不串其他 AI |
-
----
-
 ## 六、并发与压力（严格实测补充）
 
 在**每个 AI 单测全绿**后，增加一轮：
 
 1. **双 AI 并发**（任选 2 个）：同一 `sessionId` 下两条 query，无串会话、无统一 `TASK_ERROR`。  
-2. **七 AI 全开**（可选）：仅用于压测浏览器池；若出现 `浏览器池繁忙` 或大量 `TASK_ERROR`，记录为**环境/容量**类缺陷，与单 AI 逻辑缺陷区分。
+2. **四 AI 轮流或全开**（可选）：用于压测浏览器池；若出现 `浏览器池繁忙` 或大量 `TASK_ERROR`，记录为**环境/容量**类缺陷，与单 AI 逻辑缺陷区分。
 
 ---
 
@@ -167,7 +137,7 @@ cd WxFbsir-ui && npm run test:aigc-mapper
 
 ## 八、方案维护
 
-- **配置变更**：仅改 `engineConfig.js` 时，同步更新本文「第三节」与 `npm run test:aigc-mapper` 矩阵。  
+- **配置变更**：仅改 `engineConfig.js` 时，同步更新本文「第三节」与 `npm run test:aigc-mapper` 矩阵（`WxFbsir-ui/scripts/verify-ai-capability-mapper.mjs` 中 `SHELVED` 列表）。  
 - **新增上架 AI**：补一节「5.x」+ 第三节表格一行。  
 - **版本**：与 Engine `application.yml` 中 `engine.version` 可在页脚备注以便追溯。
 
@@ -191,5 +161,5 @@ cd WxFbsir-ui && npm run test:aigc-mapper
 | 环节 | 内容 |
 |------|------|
 | **自动化门禁** | `mvn -f WxFbsir-engine/pom.xml test`；`cd WxFbsir-ui && npm run test:aigc-mapper` |
-| **并发实测注意** | Engine `TaskExecutionTracker` 全局槽位与 `BrowserPoolManager` 信号量需 ≥ 并行路数；七路全开失败时优先判**容量/池配置**而非单 AI 逻辑 |
+| **并发实测注意** | Engine `TaskExecutionTracker` 全局槽位与 `BrowserPoolManager` 信号量需 ≥ 并行路数；多路并发失败时优先判**容量/池配置**而非单 AI 逻辑 |
 | **落库错误可追溯** | Admin `EngineMessageRouter` 已对 `AI_TASK_ERROR` 合并 `errorMessage` 至 `results`，`payload.data` 非 Map 时安全忽略；`sys-info` 中 `[AIGC入站]` 含 `errorMessage=` |

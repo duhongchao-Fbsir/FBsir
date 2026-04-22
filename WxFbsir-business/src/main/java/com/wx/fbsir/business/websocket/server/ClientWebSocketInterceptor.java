@@ -85,9 +85,16 @@ public class ClientWebSocketInterceptor implements HandshakeInterceptor {
                 return false;
             }
             
-            // 生成 clientId: {clientType}-{userId}
+            // 生成 clientId: {clientType}-{userId}，可选 wsSlot 后缀以避免同账号多连接互踢
             String clientId = clientType + "-" + loginUser.getUserId();
-            
+            String wsSlot = servletRequest.getServletRequest().getParameter("wsSlot");
+            if (StringUtils.isNotEmpty(wsSlot)) {
+                String slot = sanitizeWsSlot(wsSlot);
+                if (StringUtils.isNotEmpty(slot)) {
+                    clientId = clientId + "__" + slot;
+                }
+            }
+
             // 存入 session attributes
             attributes.put("clientId", clientId);
             attributes.put("clientType", clientType);
@@ -177,6 +184,26 @@ public class ClientWebSocketInterceptor implements HandshakeInterceptor {
             e.printStackTrace();
             return null;
         }
+    }
+
+    /** 并发/多标签：只允许安全字符，限制长度，避免异常 clientId */
+    private String sanitizeWsSlot(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String t = raw.trim();
+        if (t.length() > 48) {
+            t = t.substring(0, 48);
+        }
+        StringBuilder sb = new StringBuilder(t.length());
+        for (int i = 0; i < t.length(); i++) {
+            char c = t.charAt(i);
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+                || c == '_' || c == '-') {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 
     /**

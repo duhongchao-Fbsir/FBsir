@@ -1,0 +1,32 @@
+[
+  {
+    "index": 0,
+    "labelLine": "接收问题变量",
+    "inferredMenu": "设置变量",
+    "panelSnapshot": {
+      "panelTitle": "接收问题变量",
+      "panelTextDigest": "接收问题变量",
+      "fields": []
+    }
+  },
+  {
+    "index": 1,
+    "labelLine": "大模型生成回答",
+    "inferredMenu": "大模型问答",
+    "panelSnapshot": {
+      "panelTitle": "大模型生成回答",
+      "panelTextDigest": "大模型生成回答",
+      "fields": []
+    }
+  },
+  {
+    "index": 2,
+    "labelLine": "返回结果",
+    "inferredMenu": "结束",
+    "panelSnapshot": {
+      "panelTitle": "返回结果",
+      "panelTextDigest": "返回结果",
+      "fields": []
+    }
+  }
+]

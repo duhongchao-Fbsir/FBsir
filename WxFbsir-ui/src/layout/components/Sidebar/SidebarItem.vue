@@ -4,7 +4,7 @@
       <app-link v-if="onlyOneChild.meta" :to="resolvePath(onlyOneChild.path, onlyOneChild.query)">
         <el-menu-item :index="resolvePath(onlyOneChild.path)" :class="{ 'submenu-title-noDropdown': !isNest }">
           <svg-icon :icon-class="onlyOneChild.meta.icon || (item.meta && item.meta.icon)"/>
-          <template #title><span class="menu-title" :title="hasTitle(onlyOneChild.meta.title)">{{ onlyOneChild.meta.title }}</span></template>
+          <template #title><span class="menu-title" :title="menuTooltipTitle(onlyOneChild.meta.title)">{{ onlyOneChild.meta.title }}</span></template>
         </el-menu-item>
       </app-link>
     </template>
@@ -12,7 +12,7 @@
     <el-sub-menu v-else ref="subMenu" :index="resolvePath(item.path)" teleported>
       <template v-if="item.meta" #title>
         <svg-icon :icon-class="item.meta && item.meta.icon" />
-        <span class="menu-title" :title="hasTitle(item.meta.title)">{{ item.meta.title }}</span>
+        <span class="menu-title" :title="menuTooltipTitle(item.meta.title)">{{ item.meta.title }}</span>
       </template>
 
       <sidebar-item
@@ -90,11 +90,12 @@ function resolvePath(routePath, routeQuery) {
   return getNormalPath(props.basePath + '/' + routePath)
 }
 
-function hasTitle(title){
-  if (title.length > 5) {
-    return title
-  } else {
-    return ""
+/** 悬停显示完整菜单名（原 hasTitle 在 title≤5 字时为空，导致窄侧栏截断后无法看到全称） */
+function menuTooltipTitle(title) {
+  if (title === undefined || title === null) {
+    return ''
   }
+  const s = String(title).trim()
+  return s.length > 0 ? s : ''
 }
 </script>

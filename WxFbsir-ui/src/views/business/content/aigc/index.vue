@@ -216,26 +216,6 @@
                         {{ option.label }}
                       </el-tag>
                     </div>
-                    <div v-if="ai.id === 'gitee' && aiStates[ai.id]?.options?.repositoryQA" class="gitee-suboption-row">
-                      <span class="gitee-suboption-label">仓库选择</span>
-                      <el-select
-                        v-model="giteeRepositoryName"
-                        size="small"
-                        style="width: 260px"
-                        :placeholder="giteeRepositoryChoicesLoading ? '登录检测中...' : '请选择仓库'"
-                        :loading="giteeRepositoryChoicesLoading"
-                        :disabled="!canSelectGiteeRepository"
-                      >
-                        <el-option
-                          v-for="item in (ai.repositoryChoices || [])"
-                          :key="item.value"
-                          :label="item.label"
-                          :value="item.value"
-                        />
-                      </el-select>
-                      <span v-if="giteeRepositoryChoicesLoading" class="gitee-suboption-hint">等待登录状态确认...</span>
-                      <span v-else-if="!ai.loggedIn" class="gitee-suboption-hint">请先完成 Gitee 登录</span>
-                    </div>
                   </div>
                 </el-card>
               </div>
@@ -398,18 +378,18 @@
               {{ result.qualitySummary }}
             </div>
 
-            <!-- 🔥 优先显示截图 -->
-            <div v-if="result.hasScreenshot && result.screenshotUrl" class="result-screenshot">
+            <!-- 🔥 优先显示截图（须为合法 http(s)/data 图片地址，避免异常字符串被当作 URL 导致裂图） -->
+            <div v-if="result.hasScreenshot && isRenderableScreenshotUrl(result.screenshotUrl)" class="result-screenshot">
               <img :src="result.screenshotUrl" alt="AI回复截图" class="result-screenshot-image"
                 @click="showLargeImage(result.screenshotUrl)" />
               <div class="screenshot-tip">点击图片查看大图</div>
             </div>
 
-            <!-- 🔥 如果没有截图，显示文本内容 -->
-            <div v-else-if="result.content" class="markdown-content" v-html="renderMarkdown(result.content)"></div>
+            <!-- 🔥 文本与截图并存：有效截图时仍可展示抽取的正文，避免只显示裂图 -->
+            <div v-if="result.content" class="markdown-content" v-html="renderMarkdown(result.content)"></div>
 
-            <!-- 🔥 既没有截图也没有文本 -->
-            <div v-else class="no-result">
+            <!-- 🔥 既没有有效截图也没有文本 -->
+            <div v-if="!result.content && !(result.hasScreenshot && isRenderableScreenshotUrl(result.screenshotUrl))" class="no-result">
               <el-icon :size="48">
                 <Warning />
               </el-icon>
@@ -512,13 +492,10 @@ import {
   getAiServices,
   getAiQueryMessageType,
   getServiceScanLoginMessageType,
-  getServiceCheckLoginMessageType,
   getAiScanLoginMessageType,
   initServiceOptionsState,
   handleExclusiveOptionToggle,
-  applyGiteeOptionsToggle,
-  updateServiceLoginStatus,
-  updateServiceDynamicChoices
+  updateServiceLoginStatus
 } from '@/config/engineConfig'
 import { AI_CAPABILITY_MATRIX, buildCompatibleAiPayload } from '@/utils/aiCapabilityMapper'
 
@@ -546,42 +523,12 @@ export default {
 
     // 🔥 动态AI状态管理
     const aiStates = ref({})
-    const giteeRepositoryName = ref('')
-    const giteeRepositoryChoicesLoading = ref(false)
-
-    const canSelectGiteeRepository = computed(() => {
-      const giteeConfig = getEngineConfig('gitee')
-      return !!(giteeConfig?.loggedIn && !giteeRepositoryChoicesLoading.value)
-    })
-
-    const syncGiteeRepositoryChoices = (resultData) => {
-      const rawChoices = resultData?.repositoryChoices
-      if (!Array.isArray(rawChoices)) return
-
-      const normalized = rawChoices
-        .map(item => String(item || '').trim())
-        .filter(Boolean)
-
-      const uniqueChoices = Array.from(new Set(normalized))
-      const mappedChoices = [
-        { label: '页面默认仓库', value: '' },
-        ...uniqueChoices.map(item => ({ label: item, value: item }))
-      ]
-
-      updateServiceDynamicChoices('gitee', 'repositoryChoices', mappedChoices)
-
-      if (giteeRepositoryName.value
-        && !mappedChoices.some(item => item.value === giteeRepositoryName.value)) {
-        giteeRepositoryName.value = ''
-      }
-    }
 
     const normalizeAiType = (value, fallback = 'unknown') => {
       const raw = String(value || '').trim().toLowerCase()
       if (!raw) return fallback
       if (getEngineConfig(raw)) return raw
       if (raw === 'tongyi' || raw === 'ty') return 'qianwen'
-      if (raw === 'metaso') return 'mita'
       return fallback
     }
 
@@ -597,13 +544,6 @@ export default {
       if (normalized) return normalized
       const byDisplay = ENGINE_CONFIGS.find(cfg => cfg.displayName === raw)
       return byDisplay?.id || 'unknown'
-    }
-
-    const requestGiteeRepositoryChoices = () => {
-      giteeRepositoryChoicesLoading.value = true
-      sessionId = generateUUID()
-      const checkType = getServiceCheckLoginMessageType('gitee')
-      sendWebSocketMessage(checkType, { sessionId: sessionId, aiType: 'gitee' })
     }
 
     // 🔥 初始化AI状态
@@ -629,20 +569,7 @@ export default {
       const currentState = aiStates.value[aiId].options
       const newValue = !currentState[optionId]
 
-      // gitee：模式互斥由 engineConfig.applyGiteeOptionsToggle 单源驱动（与 exclusive 配置一致）
-      if (aiId === 'gitee') {
-        const { newState, needRequestRepositoryChoices } = applyGiteeOptionsToggle(optionId, newValue, currentState)
-        aiStates.value[aiId].options = newState
-        if (!newState.repositoryQA) {
-          giteeRepositoryName.value = ''
-          giteeRepositoryChoicesLoading.value = false
-        } else if (needRequestRepositoryChoices) {
-          requestGiteeRepositoryChoices()
-        }
-      } else {
-        // 其他服务使用默认的互斥逻辑
-        aiStates.value[aiId].options = handleExclusiveOptionToggle(aiId, optionId, newValue, currentState)
-      }
+      aiStates.value[aiId].options = handleExclusiveOptionToggle(aiId, optionId, newValue, currentState)
     }
 
     // 🔥 处理服务登录
@@ -690,9 +617,7 @@ export default {
       dbChatId: '',
       tyChatId: '',
       deepseekChatId: '',
-      giteeChatId: '',
       maxChatId: '',
-      metasoChatId: '',
       kimiChatId: '',
       zhzdChatId: '',
       isNewChat: true
@@ -875,9 +800,7 @@ export default {
         dbChatId: '',
         tyChatId: '',
         deepseekChatId: '',
-        giteeChatId: '',
         maxChatId: '',
-        metasoChatId: '',
         kimiChatId: '',
         zhzdChatId: '',
         isNewChat: true
@@ -1077,10 +1000,7 @@ export default {
           || ''
         // DeepSeek 会话ID仅允许 DeepSeek 自有来源，禁止跨AI chatId回填
         userInfoReq.value.deepseekChatId = item.deepseekChatId || findStoredResultByAiType('deepseek')?.chatId || ''
-        // Gitee 会话ID只能使用 Gitee 自己的历史结果，不能回退到其它AI的 chatId
-        userInfoReq.value.giteeChatId = item.giteeChatId || findStoredResultByAiType('gitee')?.chatId || ''
         userInfoReq.value.maxChatId = item.maxChatId || ''
-        userInfoReq.value.metasoChatId = item.metasoChatId || findStoredResultByAiType('mita')?.chatId || ''
         userInfoReq.value.kimiChatId = item.kimiChatId || ''
         userInfoReq.value.zhzdChatId = item.zhzdChatId || ''
         userInfoReq.value.isNewChat = false
@@ -1212,9 +1132,7 @@ export default {
         userInfoReq.value.dbChatId = ''
         userInfoReq.value.tyChatId = ''
         userInfoReq.value.deepseekChatId = ''
-        userInfoReq.value.giteeChatId = ''
         userInfoReq.value.maxChatId = ''
-        userInfoReq.value.metasoChatId = ''
         userInfoReq.value.kimiChatId = ''
         userInfoReq.value.zhzdChatId = ''
       }
@@ -1238,17 +1156,10 @@ export default {
         }
 
         const aiOptions = state.options || {}
-        if (aiId === 'gitee' && aiOptions.repositoryQA && giteeRepositoryChoicesLoading.value) {
-          ElMessage.warning('Gitee 登录检测中，请稍后再发送')
-          continue
-        }
         const chatIdField = config.chatIdField || `${aiId}ChatId`
         const aiChatId = isCurrentRoundNewChat ? '' : (userInfoReq.value[chatIdField] || '')
 
         const providerOptions = {}
-        if (aiId === 'gitee' && aiOptions.repositoryQA) {
-          providerOptions.repositoryName = giteeRepositoryName.value || ''
-        }
 
         const { payload, normalized } = buildCompatibleAiPayload({
           aiId,
@@ -1391,10 +1302,6 @@ export default {
         // 兜底登录检测处理：兼容非标准 messageType（例如数值code）
         if (payloadData.isLoggedIn !== undefined || payload.isLoggedIn !== undefined) {
           const loginData = payloadData.isLoggedIn !== undefined ? payloadData : payload
-          if (payloadAiType === 'gitee') {
-            giteeRepositoryChoicesLoading.value = false
-            syncGiteeRepositoryChoices(loginData)
-          }
           updateServiceLoginStatus(payloadAiType, loginData.isLoggedIn === true)
         }
 
@@ -1450,10 +1357,6 @@ export default {
             if (resultData.isLoggedIn !== undefined || (resultData.data && resultData.data.isLoggedIn !== undefined)) {
               const isLoggedIn = resultData.isLoggedIn !== undefined ? resultData.isLoggedIn : resultData.data?.isLoggedIn
               const userName = resultData.userName || resultData.data?.userName || ''
-              if (aiType === 'gitee') {
-                giteeRepositoryChoicesLoading.value = false
-                syncGiteeRepositoryChoices(resultData.data || resultData)
-              }
               updateServiceLoginStatus(aiType, isLoggedIn === true)
               if (isLoggedIn) {
                 ElMessage.success(`${aiType} 已登录: ${userName}`)
@@ -1480,9 +1383,6 @@ export default {
             const screenshotUrl = resultData.conversationScreenshot || ''
             const hasRenderableResult = !!(answerText || textContent || screenshotUrl)
             if (hasRenderableResult) {
-              if (aiType === 'gitee') {
-                syncGiteeRepositoryChoices(resultData)
-              }
               // 🔥 更新对应AI的完成状态
               const targetAi = enabledAIs.value.find(ai => ai.aiId === aiType)
               if (targetAi) {
@@ -1676,6 +1576,16 @@ export default {
         failed: '失败'
       }
       return statusMap[status] || status
+    }
+
+    const isRenderableScreenshotUrl = (url) => {
+      if (!url || typeof url !== 'string') return false
+      const t = url.trim()
+      return (
+        t.startsWith('http://') ||
+        t.startsWith('https://') ||
+        t.startsWith('data:image/')
+      )
     }
 
     const renderMarkdown = (content) => {
@@ -2124,9 +2034,6 @@ export default {
       // 🔥 动态AI配置
       aiServices,
       aiStates,
-      giteeRepositoryName,
-      giteeRepositoryChoicesLoading,
-      canSelectGiteeRepository,
       currentLoginServiceName,
       // 🔥 新增：上下文复用相关
       enabledAIs,
@@ -2144,6 +2051,7 @@ export default {
       sendPrompt,
       formatTime,
       getStatusText,
+      isRenderableScreenshotUrl,
       renderMarkdown,
       showLargeImage,
       openShareUrl,
@@ -2188,25 +2096,6 @@ export default {
 <style lang="scss" scoped>
 .ai-management-platform {
   padding: 0;
-}
-
-.gitee-suboption-row {
-  margin-top: 10px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.gitee-suboption-label {
-  font-size: 12px;
-  color: #606266;
-  white-space: nowrap;
-}
-
-.gitee-suboption-hint {
-  font-size: 12px;
-  color: #909399;
-  white-space: nowrap;
 }
 
 .output-ai-selector {

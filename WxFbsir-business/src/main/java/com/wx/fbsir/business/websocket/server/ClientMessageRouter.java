@@ -97,6 +97,19 @@ public class ClientMessageRouter {
             JSONObject json = JSON.parseObject(rawMessage);
             String type = json.getString("type");
             String userId = extractUserId(clientId);
+
+            if (isOffShelfType(type)) {
+                sendAiTaskError(
+                    clientId,
+                    userId,
+                    type,
+                    "N/A",
+                    "服务已下架",
+                    "Gitee AI Chat 与秘塔（Mita）已从引擎下架，当前不可用。请使用 DeepSeek / 豆包 / 千问 / 元宝。"
+                );
+                log.warn("[Router] 已拦截下架能力请求 - 用户: {}, 类型: {}", userId, type);
+                return;
+            }
             
             // ━━━━━━━━━━ 获取 engineId（必须指定）━━━━━━━━━━
             String engineId = json.getString("engineId");
@@ -269,9 +282,23 @@ public class ClientMessageRouter {
      * 路由 Engine 响应到前端
      */
     public void routeToClient(String userId, String message) {
+        routeToClient(userId, message, null);
+    }
+
+    /**
+     * @param preferredClientId 若 Engine 在 payload 中回传 sourceClientId，则仅发往该连接（同账号多会话）
+     */
+    public void routeToClient(String userId, String message, String preferredClientId) {
         try {
             JSONObject json = JSON.parseObject(message);
             String type = json.getString("type");
+
+            if (preferredClientId != null && !preferredClientId.isBlank()) {
+                String cid = preferredClientId.trim();
+                clientSessionManager.sendToClient(cid, message);
+                log.debug("[Router] 定向转发: {} -> {}", type, cid);
+                return;
+            }
             
             // 根据消息类型前缀决定发送目标
             if (type != null) {
@@ -345,14 +372,34 @@ public class ClientMessageRouter {
      * 从 clientId 提取 userId
      */
     private String extractUserId(String clientId) {
-        if (clientId.startsWith("web-")) {
-            return clientId.substring(4);
-        } else if (clientId.startsWith("mypc-")) {
-            return clientId.substring(5);
-        } else if (clientId.startsWith("mini-")) {
-            return clientId.substring(5);
+        if (clientId == null) {
+            return null;
         }
-        return clientId;
+        String rest;
+        if (clientId.startsWith("web-")) {
+            rest = clientId.substring(4);
+        } else if (clientId.startsWith("mypc-")) {
+            rest = clientId.substring(5);
+        } else if (clientId.startsWith("mini-")) {
+            rest = clientId.substring(5);
+        } else {
+            return clientId;
+        }
+        int sep = rest.indexOf("__");
+        if (sep >= 0) {
+            return rest.substring(0, sep);
+        }
+        return rest;
+    }
+
+    private boolean isOffShelfType(String type) {
+        if (type == null || type.isEmpty()) {
+            return false;
+        }
+        return type.startsWith("AI_MITA_")
+            || type.startsWith("MITA_")
+            || type.startsWith("AI_GITEE_")
+            || type.startsWith("GITEE_");
     }
 
     /**
@@ -407,9 +454,6 @@ public class ClientMessageRouter {
         if (u.startsWith("AI_YUANBAO")) {
             return "yuanbao";
         }
-        if (u.startsWith("AI_MITA")) {
-            return "mita";
-        }
         return null;
     }
 
@@ -421,8 +465,6 @@ public class ClientMessageRouter {
         switch (lower) {
             case "deepseek":
                 return payload.getString("deepseekChatId");
-            case "gitee":
-                return payload.getString("giteeChatId");
             case "doubao":
                 return payload.getString("dbChatId");
             case "qianwen":
@@ -430,8 +472,6 @@ public class ClientMessageRouter {
                 return payload.getString("toneChatId");
             case "yuanbao":
                 return payload.getString("ybChatId");
-            case "mita":
-                return payload.getString("metasoChatId");
             default:
                 return payload.getString("chatId");
         }

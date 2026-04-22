@@ -112,10 +112,11 @@ public class WebSocketClientManager {
                 this::handleMessage
             );
 
-            // 设置能力列表（连接时上报给 Admin）
+            // 设置能力列表（连接时上报给 Admin）+ 心跳时持续刷新快照
             if (capabilityManager != null) {
                 List<Map<String, Object>> capabilities = capabilityManager.getCapabilityList();
                 client.setCapabilities(capabilities);
+                client.setCapabilityListSupplier(capabilityManager::getCapabilityList);
                 log.info("[ClientManager] 已加载 {} 个能力", capabilities.size());
             }
 

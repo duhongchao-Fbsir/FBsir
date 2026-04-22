@@ -1,0 +1,92 @@
+[
+  {
+    "index": 0,
+    "labelLine": "需求与素材收集",
+    "inferredMenu": "设置变量",
+    "panelSnapshot": {
+      "panelTitle": "需求与素材收集",
+      "panelTextDigest": "需求与素材收集",
+      "fields": []
+    }
+  },
+  {
+    "index": 1,
+    "labelLine": "大纲与章节结构",
+    "inferredMenu": "大模型问答",
+    "panelSnapshot": {
+      "panelTitle": "大纲与章节结构",
+      "panelTextDigest": "大纲与章节结构",
+      "fields": []
+    }
+  },
+  {
+    "index": 2,
+    "labelLine": "正文撰写",
+    "inferredMenu": "大模型问答",
+    "panelSnapshot": {
+      "panelTitle": "正文撰写",
+      "panelTextDigest": "正文撰写",
+      "fields": []
+    }
+  },
+  {
+    "index": 3,
+    "labelLine": "事实与引用校验",
+    "inferredMenu": "问题分类",
+    "panelSnapshot": {
+      "panelTitle": "事实与引用校验",
+      "panelTextDigest": "事实与引用校验",
+      "fields": []
+    }
+  },
+  {
+    "index": 4,
+    "labelLine": "文风与一致性润色",
+    "inferredMenu": "大模型问答",
+    "panelSnapshot": {
+      "panelTitle": "文风与一致性润色",
+      "panelTextDigest": "文风与一致性润色",
+      "fields": []
+    }
+  },
+  {
+    "index": 5,
+    "labelLine": "配图与排版建议",
+    "inferredMenu": "大模型问答",
+    "panelSnapshot": {
+      "panelTitle": "配图与排版建议",
+      "panelTextDigest": "配图与排版建议",
+      "fields": []
+    }
+  },
+  {
+    "index": 6,
+    "labelLine": "导出与封装",
+    "inferredMenu": "结束",
+    "panelSnapshot": {
+      "panelTitle": "导出与封装",
+      "panelTextDigest": "导出与封装",
+      "fields": []
+    }
+  },
+  {
+    "index": 7,
+    "labelLine": "复核与迭代",
+    "inferredMenu": "大模型问答",
+    "panelSnapshot": {
+      "panelTitle": "复核与迭代",
+      "panelTextDigest": "复核与迭代",
+      "fields": []
+    }
+  },
+  {
+    "index": 8,
+    "labelLine": "交付物确认",
+    "inferredMenu": "结束",
+    "panelSnapshot": {
+      "panelTitle": "交付物确认",
+      "panelTextDigest": "交付物确认",
+      "fields": []
+    }
+  }
+]

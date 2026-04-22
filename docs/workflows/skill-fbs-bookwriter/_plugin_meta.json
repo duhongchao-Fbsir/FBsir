@@ -1,0 +1,27 @@
+{
+  "id": "skill.fbs.bookwriter",
+  "name": "fbs-bookwriter",
+  "version": "2.1.2",
+  "description": "福帮手写书 · 长文生成与交付（企微迁移轨道）",
+  "scene_packs": {
+    "builtin": ["longform-main"],
+    "available": ["longform-main"]
+  },
+  "permissions": {
+    "bash": false
+  },
+  "capabilities": {
+    "local_disk_output": true,
+    "offline_mode": false
+  },
+  "keywords": [
+    "福帮手",
+    "写书",
+    "长文",
+    "大纲",
+    "章节",
+    "质量",
+    "交付",
+    "fbs-bookwriter"
+  ]
+}

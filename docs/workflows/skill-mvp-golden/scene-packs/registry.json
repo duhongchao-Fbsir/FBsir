@@ -1,0 +1,9 @@
+{
+  "packs": {
+    "mvp-basic": {
+      "title": "MVP Basic",
+      "entry": "scene-packs/mvp-basic.json"
+    }
+  }
+}
+

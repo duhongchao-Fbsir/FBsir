@@ -1,0 +1,40 @@
+{
+  "title": "skill-mvp-golden -> 企微工作流(1.0.0)",
+  "editorImportModel": "full_placeholder_structure",
+  "nodes": [
+    { "id": "n_start", "type": "start", "label": "开始" },
+    {
+      "id": "n_receive_question",
+      "type": "input",
+      "label": "接收问题变量",
+      "editorNodeSpec": {
+        "preferredMenu": "设置变量",
+        "menuCandidates": ["设置变量", "变量"]
+      }
+    },
+    {
+      "id": "n_generate_answer",
+      "type": "process",
+      "label": "大模型生成回答",
+      "editorNodeSpec": {
+        "preferredMenu": "大模型问答",
+        "menuCandidates": ["大模型问答"]
+      }
+    },
+    {
+      "id": "n_emit_output",
+      "type": "output",
+      "label": "返回结果",
+      "editorNodeSpec": {
+        "preferredMenu": "结束",
+        "menuCandidates": ["结束", "知识库问答", "大模型问答"]
+      }
+    },
+    { "id": "n_end", "type": "end", "label": "结束" }
+  ],
+  "endOutputs": [
+    { "name": "response", "type": "String" },
+    { "name": "traceId", "type": "String" }
+  ]
+}
+

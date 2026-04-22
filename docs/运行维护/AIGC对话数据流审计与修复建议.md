@@ -37,7 +37,7 @@
 
 ### P0｜历史列表按 `aiName` 筛选时「筛检」失效（SQL 行为风险）
 
-**位置**：`AigcMapper.xml` → `getChatHistory` 中 `<choose>` 仅覆盖 `deepseek` / `yuanbao` / `gitee` / `wenxin` / `mita` 等，**未覆盖 `doubao`、`qianwen`（千问）等**。
+**位置**：`AigcMapper.xml` → `getChatHistory` 中 `<choose>` 若未覆盖**全部当前上架**（`deepseek` / `doubao` / `qianwen` / `yuanbao` 等），或仍保留已下架 AI 的旧分支名，均可能导致筛检与代码真源不一致。
 
 **现象**：当 `aiName` 为未列出的值时，`<choose>` **无匹配分支** → 该 `<if>` 块内输出为空，**等价于不按 AI 过滤**，可能返回 **全量历史**（与产品预期「只看某 AI」不符）。
 

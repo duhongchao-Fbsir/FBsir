@@ -92,16 +92,12 @@ public class CapabilityRegistry {
     private void registerLegacyCapabilityAliases() {
         registerAliasIfMissing("AI_DEEPSEEK_CHECK_LOGIN", "DEEPSEEK_CHECK_LOGIN");
         registerAliasIfMissing("AI_DEEPSEEK_SCAN_LOGIN", "DEEPSEEK_SCAN_LOGIN");
-        registerAliasIfMissing("AI_GITEE_CHECK_LOGIN", "GITEE_CHECK_LOGIN");
-        registerAliasIfMissing("AI_GITEE_SCAN_LOGIN", "GITEE_SCAN_LOGIN");
         registerAliasIfMissing("AI_DOUBAO_CHECK_LOGIN", "DOUBAO_CHECK_LOGIN");
         registerAliasIfMissing("AI_DOUBAO_SCAN_LOGIN", "DOUBAO_SCAN_LOGIN");
         registerAliasIfMissing("AI_QIANWEN_CHECK_LOGIN", "QIANWEN_CHECK_LOGIN");
         registerAliasIfMissing("AI_QIANWEN_SCAN_LOGIN", "QIANWEN_SCAN_LOGIN");
         registerAliasIfMissing("AI_YUANBAO_CHECK_LOGIN", "YUANBAO_CHECK_LOGIN");
         registerAliasIfMissing("AI_YUANBAO_SCAN_LOGIN", "YUANBAO_SCAN_LOGIN");
-        registerAliasIfMissing("AI_MITA_CHECK_LOGIN", "MITA_CHECK_LOGIN");
-        registerAliasIfMissing("AI_MITA_SCAN_LOGIN", "MITA_SCAN_LOGIN");
     }
 
     private void registerAliasIfMissing(String aliasType, String primaryType) {

@@ -3,6 +3,9 @@
 $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $base = 'http://127.0.0.1:8080'
 $engineId = 'engine-dev-001'
+if (-not [string]::IsNullOrWhiteSpace($env:E2E_ENGINE_ID)) {
+  $engineId = $env:E2E_ENGINE_ID.Trim()
+}
 $chatId = 'e2e-smoke-' + [Guid]::NewGuid().ToString('N').Substring(0, 8)
 
 $loginBody = '{"username":"admin","password":"admin123","code":"","uuid":""}'
@@ -10,6 +13,11 @@ $login = Invoke-RestMethod -Uri "$base/login" -Method Post -ContentType 'applica
 $tok = $login.token
 $enc = [System.Uri]::EscapeDataString($tok)
 $wsUri = "ws://127.0.0.1:8080/ws/client?clientType=web&token=$enc"
+# 鐜鍙橀噺 E2E_WS_SLOT锛歋erver 涓?clientId 鍔犲悗缂€锛岄伩鍏嶅悓璐﹀彿骞跺彂杩炴帴浜掓崯
+if (-not [string]::IsNullOrWhiteSpace($env:E2E_WS_SLOT)) {
+  $slotEnc = [System.Uri]::EscapeDataString($env:E2E_WS_SLOT.Trim())
+  $wsUri = "$wsUri&wsSlot=$slotEnc"
+}
 
 # 榛樿鍙窇鍏ㄩ噺锛涚幆澧冨彉閲?E2E_ONE=1 鏃跺彧璺?DeepSeek锛堟湰鏈哄凡鐧诲綍鏃堕€氬父鑳?RESULT_OK锛夛紝鐢ㄤ簬蹇€熼獙璇佺紪璇?閲嶅惎閾捐矾
 if ($env:E2E_ONE -eq '1') {
@@ -19,13 +27,43 @@ if ($env:E2E_ONE -eq '1') {
     @{ id = 'deepseek'; type = 'AI_DEEPSEEK_QUERY' },
     @{ id = 'doubao'; type = 'AI_DOUBAO_QUERY' },
     @{ id = 'qianwen'; type = 'AI_QIANWEN_QUERY' },
-    @{ id = 'yuanbao'; type = 'AI_YUANBAO_QUERY' },
-    @{ id = 'mita'; type = 'AI_MITA_QUERY' },
-    @{ id = 'gitee'; type = 'AI_GITEE_QUERY' }
+    @{ id = 'yuanbao'; type = 'AI_YUANBAO_QUERY' }
   )
 }
 
 $results = @()
+
+function Test-HumanVerificationSignal {
+  param([string]$Text)
+  if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+  $s = $Text.ToLowerInvariant()
+  return (
+    $s.Contains("人机验证") -or
+    $s.Contains("安全验证") -or
+    $s.Contains("captcha") -or
+    $s.Contains("human verification")
+  )
+}
+
+function Test-HumanVerificationPassed {
+  param([string]$Text)
+  if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+  $s = $Text.ToLowerInvariant()
+  return (
+    ($s.Contains("人机验证") -and ($s.Contains("已通过") -or $s.Contains("继续执行"))) -or
+    $s.Contains("human verification passed")
+  )
+}
+
+function Test-HumanVerificationStuck {
+  param([string]$Text)
+  if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+  $s = $Text.ToLowerInvariant()
+  return (
+    $s.Contains("human_verification_stuck") -or
+    ($s.Contains("人机验证") -and ($s.Contains("未通过") -or $s.Contains("长时间")))
+  )
+}
 
 function Receive-OneWsTextMessage {
   param(
@@ -90,10 +128,19 @@ foreach ($row in $ais) {
   $sendSeg = New-Object System.ArraySegment[byte] -ArgumentList @(,$bytes)
   $null = $ws.SendAsync($sendSeg, [System.Net.WebSockets.WebSocketMessageType]::Text, $true, $ct).Wait(30000)
 
-  # 鏂囧績鍋跺彂鍦?120s 杈圭晫鎵嶅洖缁堟€侊紝鏀惧鍒?150s 闄嶄綆璇垽 TIMEOUT
-  $deadline = [DateTime]::UtcNow.AddSeconds(150)
+  # 单机等待终态默认 150s；双会话压池时可设环境变量 E2E_REPLY_DEADLINE_SEC=280~360
+  $replySec = 150
+  if ($env:E2E_REPLY_DEADLINE_SEC -match '^\d+$') {
+    $replySec = [int]$env:E2E_REPLY_DEADLINE_SEC
+  }
+  if ($replySec -lt 30) { $replySec = 30 }
+  if ($replySec -gt 600) { $replySec = 600 }
+  $deadline = [DateTime]::UtcNow.AddSeconds($replySec)
   $outcome = 'TIMEOUT'
   $detail = ''
+  $hvDetected = $false
+  $hvPassed = $false
+  $hvStuck = $false
   while ([DateTime]::UtcNow -lt $deadline) {
     $txt = Receive-OneWsTextMessage -Socket $ws -Buffer $buf -DeadlineUtc $deadline
     if ($null -eq $txt) { continue }
@@ -101,19 +148,27 @@ foreach ($row in $ais) {
       $j = $txt | ConvertFrom-Json
     } catch { continue }
     $t = [string]$j.type
-    if ($t -ne 'AI_TASK_RESULT' -and $t -ne 'AI_TASK_ERROR') { continue }
+    if ($t -ne 'AI_TASK_RESULT' -and $t -ne 'AI_TASK_ERROR' -and $t -ne 'AI_TASK_LOG') { continue }
     $psid = $null
     if ($j.payload) {
       $psid = $j.payload.sessionId
       if (-not $psid -and $j.payload.payload) { $psid = $j.payload.payload.sessionId }
     }
     if ($psid -and $psid -ne $sessionId) { continue }
+    if ($t -eq 'AI_TASK_LOG') {
+      $logMsg = [string]$j.payload.message
+      if (Test-HumanVerificationSignal -Text $logMsg) { $hvDetected = $true }
+      if (Test-HumanVerificationPassed -Text $logMsg) { $hvPassed = $true }
+      continue
+    }
     if ($t -eq 'AI_TASK_RESULT') {
       $succ = $j.payload.success
       if ($succ -eq $true) { $outcome = 'RESULT_OK' } else { $outcome = 'RESULT_FAIL' }
     } else {
       $outcome = 'TASK_ERROR'
       $detail = [string]$j.payload.errorMessage
+      if (Test-HumanVerificationSignal -Text $detail) { $hvDetected = $true }
+      if (Test-HumanVerificationStuck -Text $detail) { $hvStuck = $true }
     }
     break
   }
@@ -122,7 +177,15 @@ foreach ($row in $ais) {
       $null = $ws.CloseAsync([System.Net.WebSockets.WebSocketCloseStatus]::NormalClosure, '', $ct).Wait(5000)
     }
   } catch { }
-  $results += [pscustomobject]@{ AI = $row.id; SessionId = $sessionId; Outcome = $outcome; Detail = $detail }
+  $results += [pscustomobject]@{
+    AI = $row.id
+    SessionId = $sessionId
+    Outcome = $outcome
+    Detail = $detail
+    HumanVerifyDetected = $hvDetected
+    HumanVerifyPassed = $hvPassed
+    HumanVerifyStuck = $hvStuck
+  }
   Start-Sleep -Seconds 1
 }
 

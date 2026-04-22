@@ -338,7 +338,7 @@ public class YuanbaoController extends StreamTaskHelper {
         boolean enableFileUpload = normalized.isFileUploadEnabled();
         String uploadedFileUrl = normalized.getFileUploadUrl();
 
-        StreamTask task = startAiStreamTask(userId, sessionId, aiType, 6000);
+        StreamTask task = startAiStreamTask(message, sessionId, aiType, 6000);
         ReentrantLock userLock = getUserSerialLock(userId);
         userLock.lock();
         BrowserSession session = null;

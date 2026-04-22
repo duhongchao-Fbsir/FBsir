@@ -13,10 +13,14 @@ import java.net.URI;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Engine WebSocket 客户端
@@ -118,6 +122,12 @@ public class EngineWebSocketClient extends WebSocketClient {
      * <p>⚠️ 注意：setCapabilities时进行了防御性拷贝
      */
     private volatile java.util.List<java.util.Map<String, Object>> capabilities;
+
+    /**
+     * 心跳时拉取最新能力列表（与 {@link #setCapabilities} 二选一或并存：优先 Supplier，失败则退回缓存）
+     * <p>使 Admin 在 Engine 热重启/升级后不必仅靠 ENGINE_REGISTER 一次快照，可在长连接下同步新增能力（如 QYWEIXIN_CAPABILITY_CATALOG）。
+     */
+    private volatile Supplier<List<Map<String, Object>>> capabilityListSupplier;
 
     /**
      * 性能数据缓存（用于心跳消息）
@@ -628,6 +638,26 @@ public class EngineWebSocketClient extends WebSocketClient {
         this.capabilities = caps != null ? new java.util.ArrayList<>(caps) : null;
     }
 
+    public void setCapabilityListSupplier(Supplier<List<Map<String, Object>>> supplier) {
+        this.capabilityListSupplier = supplier;
+    }
+
+    private List<Map<String, Object>> snapshotCapabilitiesForHeartbeat() {
+        Supplier<List<Map<String, Object>>> sup = capabilityListSupplier;
+        if (sup != null) {
+            try {
+                List<Map<String, Object>> fresh = sup.get();
+                if (fresh != null && !fresh.isEmpty()) {
+                    return new ArrayList<>(fresh);
+                }
+            } catch (Exception e) {
+                log.debug("[Engine] 心跳拉取能力列表失败: {}", e.getMessage());
+            }
+        }
+        List<Map<String, Object>> cached = capabilities;
+        return cached != null && !cached.isEmpty() ? new ArrayList<>(cached) : null;
+    }
+
     /**
      * 打印致命错误并退出
      */
@@ -785,6 +815,12 @@ private void startHeartbeat() {
             EngineMessage.Builder heartbeatBuilder = EngineMessage.builder()
                 .type(MessageType.HEARTBEAT_PING)
                 .engineId(properties.getHostId());
+
+            // 同步能力快照（使 Admin 的 hasCapability 与 Engine 注册表一致，避免仅靠首包 ENGINE_REGISTER 后能力永久过期）
+            List<Map<String, Object>> capSnap = snapshotCapabilitiesForHeartbeat();
+            if (capSnap != null) {
+                heartbeatBuilder.payload("capabilities", capSnap);
+            }
             
             // 每5分钟在心跳消息中携带实时性能数据
             long now = System.currentTimeMillis();
